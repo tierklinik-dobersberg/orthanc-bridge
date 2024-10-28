@@ -97,9 +97,9 @@ func main() {
 
 	// Create the server
 	srv := server.Create(cfg.PublicListenAddress, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		handler.ServeHTTP(w, r)
-
 		dicomweb.AddCORSHeaders(w)
+
+		handler.ServeHTTP(w, r)
 	}))
 
 	logger.Infof("HTTP/2 server (h2c) prepared successfully, startin to listen ...")
