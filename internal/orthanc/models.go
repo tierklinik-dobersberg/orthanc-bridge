@@ -1,51 +1,63 @@
 package orthanc
 
-type GetSeriesResponse struct {
-	ID            string
-	IsStable      bool
-	Instances     []string
-	LastUpdate    string
-	MainDicomTags map[string]string
-	ParentStudy   string
-	Status        string
-	Type          string
+import (
+	"net/url"
+	"strconv"
+)
+
+type (
+	ChangesResult struct {
+		Changes []ChangeResult
+		Done    bool
+		Last    int
+	}
+
+	ChangeResult struct {
+		ChangeType   string
+		Date         string
+		ID           string
+		Path         string
+		ResourceType string
+		Seq          int
+	}
+
+	InstanceTag struct {
+		Name  string
+		Type  string
+		Value any
+	}
+
+	SimplifiedTags map[string]string
+
+	QueryOption func(q url.Values)
+)
+
+func WithLimit(limit int) QueryOption {
+	return func(q url.Values) {
+		q.Set("limit", strconv.FormatInt(int64(limit), 10))
+	}
 }
 
-type GetStudyResponse struct {
-	ID                   string
-	IsStable             bool
-	LastUpdate           string
-	MainDicomTags        map[string]string
-	ParentPatient        string
-	PatientMainDicomTags map[string]string
-	Series               []string
-	Type                 string
+func WithRequestedTags(tags []string) QueryOption {
+	return func(q url.Values) {
+		for _, tag := range tags {
+			q.Add("requestedTags", tag)
+		}
+	}
 }
 
-type GetInstanceResponse struct {
-	ID            string
-	Type          string
-	FileSize      int
-	MainDicomTags map[string]string
+func WithSince(since int) QueryOption {
+	return func(q url.Values) {
+		q.Set("since", strconv.FormatInt(int64(since), 10))
+	}
 }
 
-type ChangesResult struct {
-	Changes []ChangeResult
-	Done    bool
-	Last    int
+func WithExpand() QueryOption {
+	return func(q url.Values) {
+		q.Set("expand", "true")
+	}
 }
 
-type ChangeResult struct {
-	ChangeType   string
-	Date         string
-	ID           string
-	Path         string
-	ResourceType string
-	Seq          int
-}
-
-type InstanceTag struct {
-	Name  string
-	Type  string
-	Value any
+func mergeOpts(opt QueryOption, rest []QueryOption) []QueryOption {
+	return append(rest, opt)
 }
