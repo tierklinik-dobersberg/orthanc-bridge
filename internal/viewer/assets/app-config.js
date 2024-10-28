@@ -18,8 +18,8 @@ window.config = {
       namespace: "@ohif/extension-default.dataSourcesModule.dicomweb",
       sourceName: "dicomweb",
       configuration: {
-        friendlyName: "Tierklinik Dobersberg Orthanc DICOMWeb Server",
-        name: "TKDDICOM",
+        friendlyName: "local Orthanc DICOMWeb Server",
+        name: "DCM4CHEE",
         wadoUriRoot: "https://dicom.dobersberg.vet/bridge/active/dicom-web",
         qidoRoot: "https://dicom.dobersberg.vet/bridge/active/dicom-web",
         wadoRoot: "https://dicom.dobersberg.vet/bridge/active/dicom-web",
