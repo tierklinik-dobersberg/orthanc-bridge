@@ -105,8 +105,6 @@ func (p *SingelHostProxy) buildProxy() (*httputil.ReverseProxy, error) {
 	return &httputil.ReverseProxy{
 		Director: director,
 		ModifyResponse: func(r *http.Response) error {
-			addOHIFCorsHeaders(r)
-
 			contentType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 
 			if err != nil {
@@ -263,7 +261,7 @@ func (p *SingelHostProxy) updateOutgoingURL(v string) (string, error) {
 	return rurl.String(), nil
 }
 
-func addOHIFCorsHeaders(r *http.Response) {
+func AddCORSHeaders(r http.ResponseWriter) {
 	headers := map[string]string{
 		"Access-Control-Allow-Methods":     "GET, POST, OPTIONS",
 		"Access-Control-Allow-Headers":     "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization",
@@ -276,6 +274,6 @@ func addOHIFCorsHeaders(r *http.Response) {
 	}
 
 	for key, val := range headers {
-		r.Header.Set(key, val)
+		r.Header().Set(key, val)
 	}
 }
