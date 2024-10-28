@@ -93,6 +93,8 @@ func (p *SingelHostProxy) buildProxy() (*httputil.ReverseProxy, error) {
 			req.SetBasicAuth(p.Username, p.Password)
 		}
 
+		// Set correct Orthanc headers
+
 		if host := p.RewriteHost; host != "" {
 			req.Host = host
 		}
@@ -103,6 +105,8 @@ func (p *SingelHostProxy) buildProxy() (*httputil.ReverseProxy, error) {
 	return &httputil.ReverseProxy{
 		Director: director,
 		ModifyResponse: func(r *http.Response) error {
+			addOHIFCorsHeaders(r)
+
 			contentType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 
 			if err != nil {
@@ -257,4 +261,21 @@ func (p *SingelHostProxy) updateOutgoingURL(v string) (string, error) {
 	}
 
 	return rurl.String(), nil
+}
+
+func addOHIFCorsHeaders(r *http.Response) {
+	headers := map[string]string{
+		"Access-Control-Allow-Methods":     "GET, POST, OPTIONS",
+		"Access-Control-Allow-Headers":     "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization",
+		"Access-Control-Allow-Credentials": "true",
+		"Access-Control-Max-Age":           "172800",
+		"Access-Control-Expose-Headers":    "Content-Length,Content-Range",
+		"Cross-Origin-Opener-Policy":       "same-origin",
+		"Cross-Origin-Embedder-Policy":     "require-corp",
+		"Cross-Origin-Resource-Policy":     "cross-origin",
+	}
+
+	for key, val := range headers {
+		r.Header.Set(key, val)
+	}
 }
