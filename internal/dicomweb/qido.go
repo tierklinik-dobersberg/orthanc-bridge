@@ -14,6 +14,7 @@ const (
 	Study QIDOType = iota + 1
 	Series
 	Instance
+	Metadata
 )
 
 type QIDORequest struct {
@@ -79,9 +80,7 @@ func (res QIDOResponse) GetFirst(nameOrTag string) (any, bool) {
 	return nil, true
 }
 
-// MarshalJSON implements encoding/json.Marshaller and supports pretty
-// marshaling of a QIDOResponse
-func (res QIDOResponse) MarshalJSON() ([]byte, error) {
+func (res QIDOResponse) PrettyJSON() ([]byte, error) {
 	cp := make(map[string][]any, len(res))
 
 	for tag, value := range res {
@@ -93,7 +92,7 @@ func (res QIDOResponse) MarshalJSON() ([]byte, error) {
 		cp[name] = value.Value
 	}
 
-	return json.Marshal(cp)
+	return json.MarshalIndent(cp, "", "    ")
 }
 
 const (

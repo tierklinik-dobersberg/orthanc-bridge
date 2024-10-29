@@ -45,10 +45,17 @@ func (cli *Client) Query(ctx context.Context, req QIDORequest) ([]QIDOResponse, 
 	case Series:
 		endpoint += "/studies/" + req.StudyInstanceUID
 		endpoint += "/series"
+
 	case Instance:
 		endpoint += "/studies/" + req.StudyInstanceUID
 		endpoint += "/series/" + req.SeriesInstanceUID
 		endpoint += "/instances"
+
+	case Metadata:
+		endpoint += "/studies/" + req.StudyInstanceUID
+		endpoint += "/series/" + req.SeriesInstanceUID
+		endpoint += "/instances/" + req.SOPInstanceUID + "/metadata"
+
 	default:
 		return nil, errors.New("failed to query: need to specify query type")
 	}

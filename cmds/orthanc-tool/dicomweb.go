@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -22,6 +21,18 @@ func getDicomWebCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "dicomweb [flags]",
 		Run: func(cmd *cobra.Command, args []string) {
+			if req.StudyInstanceUID != "" {
+				req.Type = dicomweb.Series
+			}
+
+			if req.SeriesInstanceUID != "" {
+				req.Type = dicomweb.Instance
+			}
+
+			if req.SOPInstanceUID != "" {
+				req.Type = dicomweb.Metadata
+			}
+
 			cli := dicomweb.NewClient(server)
 
 			for _, filter := range filterTags {
@@ -39,12 +50,10 @@ func getDicomWebCommand() *cobra.Command {
 				logrus.Fatalf("failed to query: %s", err)
 			}
 
-			blob, err := json.MarshalIndent(res, "", "    ")
-			if err != nil {
-				logrus.Fatalf("failed to marshal response: %s", err)
+			for _, r := range res {
+				blob, _ := r.PrettyJSON()
+				fmt.Println(string(blob))
 			}
-
-			fmt.Print(string(blob))
 		},
 	}
 
@@ -55,6 +64,9 @@ func getDicomWebCommand() *cobra.Command {
 	f.StringSliceVar(&req.IncludeFields, "include-field", nil, "")
 	f.StringSliceVar(&filterTags, "filter", nil, "Format: <tag>=<value>")
 	f.BoolVar(&req.FuzzyMatching, "fuzzy", true, "")
+	f.StringVar(&req.StudyInstanceUID, "study-id", "", "")
+	f.StringVar(&req.SeriesInstanceUID, "series-id", "", "")
+	f.StringVar(&req.SOPInstanceUID, "instance-id", "", "")
 
 	return cmd
 }
