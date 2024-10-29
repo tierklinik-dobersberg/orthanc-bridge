@@ -36,6 +36,7 @@ func getRootCmd() *cobra.Command {
 		getStudiesCommand(),
 		getSeriesCommand(),
 		getInstancesCommand(),
+		getDicomWebCommand(),
 	)
 
 	return cmd
