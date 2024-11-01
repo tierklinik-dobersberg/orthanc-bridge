@@ -1,4 +1,4 @@
-package dicomweb
+package proxy
 
 import (
 	"bytes"
@@ -13,6 +13,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/config"
+	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/dicomweb"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/urlutils"
 	"github.com/ucarion/urlpath"
 )
@@ -154,7 +155,7 @@ func (p *SingelHostProxy) rewriteQidoBody(r *http.Response) error {
 	// close the body now, it will be replaced anyways
 	r.Body.Close()
 
-	var qido []QIDOResponse
+	var qido []dicomweb.QIDOResponse
 	if err := json.Unmarshal(blob, &qido); err != nil {
 		logrus.Fatalf("failed to deocde qido reponse: %s", err)
 
@@ -163,10 +164,10 @@ func (p *SingelHostProxy) rewriteQidoBody(r *http.Response) error {
 
 	// fix the hostname in the RetrieveURI and RetrieveURL values
 	count := 0
-	copy := make([]QIDOResponse, 0, len(qido))
+	copy := make([]dicomweb.QIDOResponse, 0, len(qido))
 	for _, s := range qido {
 
-		if retrieveURI, ok := s[RetrieveURI]; ok {
+		if retrieveURI, ok := s[dicomweb.RetrieveURI]; ok {
 			for idx, value := range retrieveURI.Value {
 				if str, ok := value.(string); ok {
 					updated, err := p.updateOutgoingURL(str)
@@ -176,13 +177,13 @@ func (p *SingelHostProxy) rewriteQidoBody(r *http.Response) error {
 						continue
 					}
 
-					s[RetrieveURI].Value[idx] = updated
+					s[dicomweb.RetrieveURI].Value[idx] = updated
 					count++
 				}
 			}
 		}
 
-		if retrieveURL, ok := s[RetrieveURL]; ok {
+		if retrieveURL, ok := s[dicomweb.RetrieveURL]; ok {
 			for idx, value := range retrieveURL.Value {
 				if str, ok := value.(string); ok {
 					updated, err := p.updateOutgoingURL(str)
@@ -192,7 +193,7 @@ func (p *SingelHostProxy) rewriteQidoBody(r *http.Response) error {
 						continue
 					}
 
-					s[RetrieveURL].Value[idx] = updated
+					s[dicomweb.RetrieveURL].Value[idx] = updated
 					count++
 				}
 			}

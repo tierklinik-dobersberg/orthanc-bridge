@@ -16,7 +16,7 @@ import (
 	"github.com/tierklinik-dobersberg/apis/pkg/server"
 	"github.com/tierklinik-dobersberg/apis/pkg/validator"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/config"
-	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/dicomweb"
+	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/dicomweb/proxy"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/service"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/viewer"
 	"google.golang.org/protobuf/reflect/protoregistry"
@@ -81,7 +81,7 @@ func main() {
 	for name, instance := range cfg.Instances {
 		prefix := "/bridge/" + name + "/"
 
-		proxy, err := dicomweb.New(name, prefix, publicURL, instance)
+		proxy, err := proxy.New(name, prefix, publicURL, instance)
 		if err != nil {
 			logger.Fatalf("failed to create dicomweb-proxy for %s: %s", name, err)
 		}
@@ -97,7 +97,7 @@ func main() {
 
 	// Create the server
 	srv, err := server.CreateWithOptions(cfg.PublicListenAddress, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		dicomweb.AddCORSHeaders(w)
+		proxy.AddCORSHeaders(w)
 		serveMux.ServeHTTP(w, r)
 	}), server.WithCORS(corsConfig))
 

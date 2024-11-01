@@ -80,6 +80,29 @@ func (res QIDOResponse) GetFirst(nameOrTag string) (any, bool) {
 	return nil, true
 }
 
+func (res QIDOResponse) GetAsString(nameOrTag string) (string, bool) {
+	val, ok := res.GetFirst(nameOrTag)
+	if !ok {
+		return "", false
+	}
+
+	s, ok := val.(string)
+	if !ok {
+		return "", false
+	}
+
+	return s, true
+}
+
+func (res QIDOResponse) GetAsStringDefault(nameOrTag, defaultValue string) string {
+	val, ok := res.GetAsString(nameOrTag)
+	if !ok {
+		return defaultValue
+	}
+
+	return val
+}
+
 func (res QIDOResponse) PrettyJSON() ([]byte, error) {
 	cp := make(map[string][]any, len(res))
 

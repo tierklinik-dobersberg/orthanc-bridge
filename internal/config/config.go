@@ -28,6 +28,7 @@ type Config struct {
 	AdminListenAddress  string                     `env:"ADMIN_LISTEN" json:"adminListen"`
 	PublicURL           string                     `env:"PUBLIC_URL" json:"publicUrl"`
 	Instances           map[string]OrthancInstance `json:"instances"`
+	DefaultInstance     string                     `json:"defaultInstance"`
 }
 
 func LoadConfig(ctx context.Context, path string) (*Config, error) {
