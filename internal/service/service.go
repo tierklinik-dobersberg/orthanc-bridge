@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"time"
 
@@ -71,7 +72,12 @@ func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[orthan
 
 	res, err := svc.Client.Query(ctx, r)
 	if err != nil {
-		return nil, err
+		if re, ok := err.(*dicomweb.ResponseError); ok {
+			body, _ := io.ReadAll(re.Response.Body)
+			slog.Error("failed to query for studies", "error", err, "response", string(body))
+		}
+
+		return nil, fmt.Errorf("failed to query for studies: %w", err)
 	}
 
 	response := new(orthanc_bridgev1.ListStudiesResponse)
