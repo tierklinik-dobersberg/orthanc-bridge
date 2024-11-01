@@ -9,18 +9,17 @@ require (
 	github.com/bufbuild/protovalidate-go v0.7.2
 	github.com/ghodss/yaml v1.0.0
 	github.com/hashicorp/go-multierror v1.1.1
+	github.com/mitchellh/mapstructure v1.5.0
 	github.com/sethvargo/go-envconfig v0.9.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.8.1
-	github.com/tierklinik-dobersberg/apis v0.11.1-0.20241028082746-3dc792891185
-	github.com/toastcheng/dicomweb-go v0.2.1
+	github.com/tierklinik-dobersberg/apis v0.12.1-0.20241101135239-7771e21cde76
 	github.com/ucarion/urlpath v0.0.0-20200424170820-7ccc79b76bbb
 	google.golang.org/protobuf v1.35.1
 )
 
 require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.35.1-20240920164238-5a7b106cbb87.1 // indirect
-	github.com/antlr/antlr4/runtime/Go/antlr/v4 v4.0.0-20230512164433-5d1fd1a340c9 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/golang/gddo v0.0.0-20210115222349-20d68f94ee1f // indirect
@@ -28,8 +27,6 @@ require (
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/mitchellh/go-server-timing v1.0.1 // indirect
-	github.com/mitchellh/mapstructure v1.5.0 // indirect
-	github.com/philippfranke/multipart-related v0.0.0-20170217130855-01d28b2a1769 // indirect
 	github.com/rs/cors v1.11.1 // indirect
 	github.com/sebest/xff v0.0.0-20210106013422-671bd2870b3a // indirect
 	github.com/spf13/pflag v1.0.5 // indirect

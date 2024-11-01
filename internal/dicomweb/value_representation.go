@@ -20,7 +20,7 @@ type personName struct {
 	Alphabetic string `mapstructure:"Alphabetic"`
 }
 
-func ParsePersonName(t Tag) ([]string, error) {
+func ParsePN(t Tag) ([]string, error) {
 	if t.VR != "PN" {
 		return nil, ErrUnexpectedVR
 	}
@@ -47,7 +47,11 @@ func ParsePersonName(t Tag) ([]string, error) {
 	return names, merr.ErrorOrNil()
 }
 
-func ParseDates(t Tag) ([]time.Time, error) {
+func ParseDA(t Tag) ([]time.Time, error) {
+	return ParseDAInLocation(t, time.UTC)
+}
+
+func ParseDAInLocation(t Tag, loc *time.Location) ([]time.Time, error) {
 	if t.VR != "DA" {
 		return nil, ErrUnexpectedVR
 	}
@@ -62,7 +66,7 @@ func ParseDates(t Tag) ([]time.Time, error) {
 			continue
 		}
 
-		parsed, err := time.ParseInLocation("20060102", s, time.Local)
+		parsed, err := time.ParseInLocation("20060102", s, loc)
 		if err != nil {
 			merr.Errors = append(merr.Errors, fmt.Errorf("value at index %d: invalid date format: %w", idx, err))
 			continue
@@ -74,7 +78,11 @@ func ParseDates(t Tag) ([]time.Time, error) {
 	return dates, merr.ErrorOrNil()
 }
 
-func ParseDatetimes(t Tag) ([]time.Time, error) {
+func ParseDT(t Tag) ([]time.Time, error) {
+	return ParseDAInLocation(t, time.UTC)
+}
+
+func ParseDTInLocation(t Tag, loc *time.Location) ([]time.Time, error) {
 	if t.VR != "DT" {
 		return nil, ErrUnexpectedVR
 	}
@@ -106,7 +114,7 @@ func ParseDatetimes(t Tag) ([]time.Time, error) {
 	return dates, merr.ErrorOrNil()
 }
 
-func ParseTimes(t Tag) ([]*commonv1.DayTime, error) {
+func ParseTM(t Tag) ([]*commonv1.DayTime, error) {
 	if t.VR != "TM" {
 		return nil, ErrUnexpectedVR
 	}

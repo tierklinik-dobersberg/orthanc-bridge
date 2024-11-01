@@ -9,6 +9,7 @@ import (
 	"github.com/bufbuild/connect-go"
 	"github.com/bufbuild/protovalidate-go"
 	"github.com/sirupsen/logrus"
+	"github.com/tierklinik-dobersberg/apis/gen/go/tkd/orthanc_bridge/v1/orthanc_bridgev1connect"
 	"github.com/tierklinik-dobersberg/apis/pkg/auth"
 	"github.com/tierklinik-dobersberg/apis/pkg/cors"
 	"github.com/tierklinik-dobersberg/apis/pkg/log"
@@ -16,6 +17,7 @@ import (
 	"github.com/tierklinik-dobersberg/apis/pkg/validator"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/config"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/dicomweb"
+	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/service"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/viewer"
 	"google.golang.org/protobuf/reflect/protoregistry"
 )
@@ -88,19 +90,20 @@ func main() {
 	}
 
 	// create a new CallService and add it to the mux.
-	//svc := service.New(providers)
+	svc := service.New(providers)
 
-	// path, handler := xxxv1connect.NewXXXServiceHandler(svc, interceptors)
-	// serveMux.Handle(path, handler)
-
-	handler := cors.Wrap(corsConfig, serveMux)
+	path, handler := orthanc_bridgev1connect.NewOrthancBridgeHandler(svc, interceptors)
+	serveMux.Handle(path, handler)
 
 	// Create the server
-	srv := server.Create(cfg.PublicListenAddress, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv, err := server.CreateWithOptions(cfg.PublicListenAddress, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		dicomweb.AddCORSHeaders(w)
+		serveMux.ServeHTTP(w, r)
+	}), server.WithCORS(corsConfig))
 
-		handler.ServeHTTP(w, r)
-	}))
+	if err != nil {
+		logger.Fatalf("failed to create HTTP/2 server: %s", err)
+	}
 
 	logger.Infof("HTTP/2 server (h2c) prepared successfully, startin to listen ...")
 
