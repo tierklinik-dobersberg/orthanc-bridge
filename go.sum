@@ -100,6 +100,8 @@ github.com/stretchr/testify v1.9.0 h1:HtqpIVDClZ4nwg75+f6Lvsy/wHu+3BoSGCbBAcpTsT
 github.com/stretchr/testify v1.9.0/go.mod h1:r2ic/lqez/lEtzL7wO/rwa5dbSLXVDPFyf8C91i36aY=
 github.com/tierklinik-dobersberg/apis v0.12.1-0.20241101135239-7771e21cde76 h1:Djz3O0oW5C6TPZ4B5eVz00O62VtLF9Cjr/75/VBD3E0=
 github.com/tierklinik-dobersberg/apis v0.12.1-0.20241101135239-7771e21cde76/go.mod h1:gtOs0/fU+Cxp2BafdcWTWxJ8yQ/GP5GfHeS9dK0t6p0=
+github.com/tierklinik-dobersberg/apis v0.13.1-0.20241102083740-e302c30d9a16 h1:5h5+5or7qnWlFCyOnHFOneDx6sl1b46rmmfF70naoiY=
+github.com/tierklinik-dobersberg/apis v0.13.1-0.20241102083740-e302c30d9a16/go.mod h1:gtOs0/fU+Cxp2BafdcWTWxJ8yQ/GP5GfHeS9dK0t6p0=
 github.com/ucarion/urlpath v0.0.0-20200424170820-7ccc79b76bbb h1:Ywfo8sUltxogBpFuMOFRrrSifO788kAFxmvVw31PtQQ=
 github.com/ucarion/urlpath v0.0.0-20200424170820-7ccc79b76bbb/go.mod h1:ikPs9bRWicNw3S7XpJ8sK/smGwU9WcSVU3dy9qahYBM=
 golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2/go.mod h1:djNgcEr1/C05ACkg1iLfiJU5Ep61QUkGW8qpdssI0+w=

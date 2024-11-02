@@ -129,7 +129,7 @@ func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[orthan
 
 			seriesPb := &orthanc_bridgev1.Series{
 				SeriesUid: parseFirstString(s, dicomweb.SeriesInstanceUID, merr),
-				Time:      timestamppb.New(parseDateAndTime(s, dicomweb.SeriesDate, dicomweb.SeriesTime, merr)),
+				Time:      timestamppb.New(parseDateAndTime(s, dicomweb.SeriesDate, dicomweb.SeriesTime, nil)),
 				Tags:      parseTags(s),
 			}
 
@@ -155,7 +155,7 @@ func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[orthan
 
 				ipb := &orthanc_bridgev1.Instance{
 					InstanceUid: parseFirstString(i, dicomweb.SOPInstanceUID, merr),
-					Time:        timestamppb.New(parseDateAndTime(i, dicomweb.InstanceCreationDate, dicomweb.InstanceCreationTime, merr)),
+					Time:        timestamppb.New(parseDateAndTime(i, dicomweb.InstanceCreationDate, dicomweb.InstanceCreationTime, nil)),
 					Tags:        parseTags(i),
 				}
 
@@ -199,6 +199,7 @@ func parseTags(r dicomweb.QIDOResponse) []*orthanc_bridgev1.DICOMTag {
 			Tag:                 key,
 			ValueRepresentation: t.VR,
 			Value:               values,
+			Name:                dicomweb.TagToName[key],
 		})
 	}
 

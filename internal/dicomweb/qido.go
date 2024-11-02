@@ -107,7 +107,7 @@ func (res QIDOResponse) PrettyJSON() ([]byte, error) {
 	cp := make(map[string][]any, len(res))
 
 	for tag, value := range res {
-		name, ok := NameToTag[tag]
+		name, ok := TagToName[tag]
 		if !ok {
 			name = tag
 		}
@@ -3236,12 +3236,12 @@ const (
 	EndOfSequence                       = "FFFEE0DD"
 )
 
-var NameToTag map[string]string
+var TagToName map[string]string
 
 func init() {
-	NameToTag = make(map[string]string, len(TagNames))
+	TagToName = make(map[string]string, len(TagNames))
 	for name, tag := range TagNames {
-		NameToTag[tag] = name
+		TagToName[tag] = name
 	}
 }
 
