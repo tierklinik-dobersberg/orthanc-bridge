@@ -38,7 +38,7 @@ func NewClient(url string, opts ...ClientOption) *Client {
 }
 
 func (cli *Client) InstancePreview(ctx context.Context, study, series, instance string) ([]byte, string, error) {
-	endpoint := fmt.Sprintf("%s/studies/%s/series/%s/instances/%s/preview", cli.baseUrl, study, series, instance)
+	endpoint := fmt.Sprintf("%s/studies/%s/series/%s/instances/%s/rendered", cli.baseUrl, study, series, instance)
 
 	r, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
