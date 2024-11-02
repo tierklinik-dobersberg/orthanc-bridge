@@ -64,14 +64,24 @@ func parseSingleName(res dicomweb.QIDOResponse, tag string, merr *multierror.Err
 
 func parseDateAndTime(res dicomweb.QIDOResponse, dateTag, timeTag string, merr *multierror.Error) time.Time {
 	dates, err := dicomweb.ParseDA(res[dateTag])
-	if err != nil || len(dates) == 0 {
-		merr.Errors = append(merr.Errors, fmt.Errorf("%s: invalid or unavailable", dateTag))
+	if err != nil {
+		merr.Errors = append(merr.Errors, fmt.Errorf("%s: %w", dateTag, err))
+		return time.Time{}
+	}
+
+	if len(dates) == 0 {
+		merr.Errors = append(merr.Errors, fmt.Errorf("%s: no values found", dateTag))
 		return time.Time{}
 	}
 
 	times, err := dicomweb.ParseTM(res[timeTag])
-	if err != nil || len(times) == 0 {
-		merr.Errors = append(merr.Errors, fmt.Errorf("%s: invalid or unavailable", timeTag))
+	if err != nil {
+		merr.Errors = append(merr.Errors, fmt.Errorf("%s: %w", timeTag, err))
+		return time.Time{}
+	}
+
+	if len(times) == 0 {
+		merr.Errors = append(merr.Errors, fmt.Errorf("%s: no values found", timeTag))
 		return time.Time{}
 	}
 
