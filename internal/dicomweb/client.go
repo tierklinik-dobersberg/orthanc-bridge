@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -115,6 +116,8 @@ func (cli *Client) Query(ctx context.Context, req QIDORequest) ([]QIDOResponse, 
 		endpoint += "?" + e
 	}
 
+	slog.Info("sending QIDO query request", "url", endpoint)
+
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -139,7 +142,7 @@ func (cli *Client) Query(ctx context.Context, req QIDORequest) ([]QIDOResponse, 
 
 	var quidoResponse []QIDOResponse
 	if err := json.Unmarshal(body, &quidoResponse); err != nil {
-		return nil, fmt.Errorf("failed to decode response body: %w", err)
+		return nil, fmt.Errorf("failed to decode response body: %w (body: %s)", err, string(body))
 	}
 
 	return quidoResponse, nil
