@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"path/filepath"
 
 	"github.com/tierklinik-dobersberg/apis/gen/go/tkd/idm/v1/idmv1connect"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/dicomweb"
@@ -38,6 +39,10 @@ func NewProviders(ctx context.Context, cfg Config) (*Providers, error) {
 
 	if instance.Username != "" {
 		u.User = url.UserPassword(instance.Username, instance.Password)
+	}
+
+	if instance.DicomWeb != "" {
+		u.Path = filepath.Join(u.Path, instance.DicomWeb)
 	}
 
 	defaultClient := dicomweb.NewClient(u.String())

@@ -19,6 +19,7 @@ type OrthancInstance struct {
 	Password           string `json:"password"`
 	InsecureSkipVerify bool   `json:"insecureSkipVerify"`
 	RewriteHost        string `json:"rewriteHost"`
+	DicomWeb           string `json:"dicomWebPath"` // defaults to /dicom-web/
 }
 
 type Config struct {
