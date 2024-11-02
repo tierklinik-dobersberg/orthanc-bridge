@@ -22,7 +22,7 @@ type personName struct {
 
 func ParsePN(t Tag) ([]string, error) {
 	if t.VR != "PN" {
-		return nil, ErrUnexpectedVR
+		return nil, fmt.Errorf("%w: %v", ErrUnexpectedVR, t.VR)
 	}
 
 	names := make([]string, len(t.Value))
@@ -53,7 +53,7 @@ func ParseDA(t Tag) ([]time.Time, error) {
 
 func ParseDAInLocation(t Tag, loc *time.Location) ([]time.Time, error) {
 	if t.VR != "DA" {
-		return nil, ErrUnexpectedVR
+		return nil, fmt.Errorf("%w: %v", ErrUnexpectedVR, t.VR)
 	}
 
 	dates := make([]time.Time, len(t.Value))
@@ -84,7 +84,7 @@ func ParseDT(t Tag) ([]time.Time, error) {
 
 func ParseDTInLocation(t Tag, loc *time.Location) ([]time.Time, error) {
 	if t.VR != "DT" {
-		return nil, ErrUnexpectedVR
+		return nil, fmt.Errorf("%w: %v", ErrUnexpectedVR, t.VR)
 	}
 
 	dates := make([]time.Time, len(t.Value))
@@ -116,7 +116,7 @@ func ParseDTInLocation(t Tag, loc *time.Location) ([]time.Time, error) {
 
 func ParseTM(t Tag) ([]*commonv1.DayTime, error) {
 	if t.VR != "TM" {
-		return nil, ErrUnexpectedVR
+		return nil, fmt.Errorf("%w: %v", ErrUnexpectedVR, t.VR)
 	}
 
 	dates := make([]*commonv1.DayTime, len(t.Value))
