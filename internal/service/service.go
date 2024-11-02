@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"slices"
+	"sort"
 	"time"
 
 	connect "github.com/bufbuild/connect-go"
@@ -34,9 +36,18 @@ func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[orthan
 		return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("no dicomweb client configured"))
 	}
 
-	r := dicomweb.QIDORequest{
+	qidoReq := dicomweb.QIDORequest{
 		Type:       dicomweb.Study,
 		FilterTags: make(map[string][]string),
+		IncludeFields: []string{
+			dicomweb.ResponsiblePerson,
+			dicomweb.StudyDate,
+			dicomweb.StudyTime,
+			dicomweb.SeriesDate,
+			dicomweb.SeriesTime,
+			dicomweb.InstanceCreationDate,
+			dicomweb.InstanceCreationTime,
+		},
 	}
 
 	m := req.Msg
@@ -45,32 +56,34 @@ func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[orthan
 		from := dr.From.AsTimeInLocation(time.Local)
 		to := dr.To.AsTimeInLocation(time.Local)
 
-		r.FilterTags[dicomweb.StudyDate] = []string{fmt.Sprintf("%s-%s", from.Format("20060102"), to.Format("20060102"))}
+		qidoReq.FilterTags[dicomweb.StudyDate] = []string{fmt.Sprintf("%s-%s", from.Format("20060102"), to.Format("20060102"))}
 	}
 
 	if m.EnableFuzzyMatching {
-		r.FuzzyMatching = true
+		qidoReq.FuzzyMatching = true
 	}
 
 	if m.Modality != "" {
-		r.FilterTags[dicomweb.ModalitiesInStudy] = []string{m.Modality}
+		qidoReq.FilterTags[dicomweb.ModalitiesInStudy] = []string{m.Modality}
 	}
 
 	if m.OwnerName != "" {
-		r.FilterTags[dicomweb.ResponsiblePerson] = []string{m.OwnerName}
+		qidoReq.FilterTags[dicomweb.ResponsiblePerson] = []string{m.OwnerName}
 	}
 
 	if m.PatientName != "" {
-		r.FilterTags[dicomweb.PatientName] = []string{m.PatientName}
+		qidoReq.FilterTags[dicomweb.PatientName] = []string{m.PatientName}
 	}
 
-	r.IncludeFields = m.IncludeTags
+	qidoReq.IncludeFields = append(qidoReq.IncludeFields, m.IncludeTags...)
+	sort.Strings(qidoReq.IncludeFields)
+	qidoReq.IncludeFields = slices.Compact(qidoReq.IncludeFields)
 
 	for _, values := range m.FilterTags {
-		r.FilterTags[values.Tag] = values.Value
+		qidoReq.FilterTags[values.Tag] = values.Value
 	}
 
-	res, err := svc.Client.Query(ctx, r)
+	res, err := svc.Client.Query(ctx, qidoReq)
 	if err != nil {
 		if re, ok := err.(*dicomweb.ResponseError); ok {
 			body, _ := io.ReadAll(re.Response.Body)
@@ -104,7 +117,7 @@ func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[orthan
 		series, err := svc.Client.Query(ctx, dicomweb.QIDORequest{
 			Type:             dicomweb.Series,
 			StudyInstanceUID: study.StudyUid,
-			IncludeFields:    m.IncludeTags,
+			IncludeFields:    qidoReq.IncludeFields,
 		})
 		if err != nil {
 			slog.Info("failed to fetch study series", "id", study.StudyUid, "error", err)
@@ -130,7 +143,7 @@ func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[orthan
 				Type:              dicomweb.Instance,
 				StudyInstanceUID:  study.StudyUid,
 				SeriesInstanceUID: seriesPb.SeriesUid,
-				IncludeFields:     m.IncludeTags,
+				IncludeFields:     qidoReq.IncludeFields,
 			})
 			if err != nil {
 				slog.Info("failed to fetch instances", "id", study.StudyUid, "series", seriesPb.SeriesUid, "error", err)
