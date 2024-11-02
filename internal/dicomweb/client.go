@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"path"
 	"strconv"
 	"strings"
 
@@ -35,6 +36,46 @@ func NewClient(url string, opts ...ClientOption) *Client {
 	}
 
 	return cli
+}
+
+func (cli *Client) InstancePreview(ctx context.Context, study, series, instance string) ([]byte, string, error) {
+	endpoint := path.Join(
+		cli.baseUrl,
+		"studies",
+		study,
+		"series",
+		series,
+		"instances",
+		instance,
+		"preview",
+	)
+
+	r, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+
+	res, err := cli.httpClient.Do(r)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to fetch preview: %w", err)
+	}
+	defer res.Body.Close()
+
+	content, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if res.StatusCode != http.StatusOK {
+		res.Body = io.NopCloser(bytes.NewReader(content))
+		return nil, "", &ResponseError{
+			Response: res,
+		}
+	}
+
+	contentType := res.Header.Get("Content-Type")
+
+	return content, contentType, nil
 }
 
 func (cli *Client) Query(ctx context.Context, req QIDORequest) ([]QIDOResponse, error) {
