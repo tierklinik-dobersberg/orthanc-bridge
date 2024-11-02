@@ -142,7 +142,7 @@ func (cli *Client) Query(ctx context.Context, req QIDORequest) ([]QIDOResponse, 
 
 	var quidoResponse []QIDOResponse
 	if err := json.Unmarshal(body, &quidoResponse); err != nil {
-		return nil, fmt.Errorf("failed to decode response body: %w (body: %s)", err, string(body))
+		return nil, fmt.Errorf("failed to decode response body: %w (body: %s)", err, string(body)[:80])
 	}
 
 	return quidoResponse, nil
