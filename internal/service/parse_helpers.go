@@ -12,13 +12,13 @@ import (
 func parseFirstString(res dicomweb.QIDOResponse, tag string, merr *multierror.Error) string {
 	value, ok := res.GetFirst(tag)
 	if !ok {
-		merr.Errors = append(merr.Errors, fmt.Errorf("no studyInstanceUID found"))
+		merr.Errors = append(merr.Errors, fmt.Errorf("%s: not found", tag))
 		return ""
 	}
 
 	id, ok := value.(string)
 	if !ok {
-		merr.Errors = append(merr.Errors, fmt.Errorf("studyInstanceUID: %w", dicomweb.ErrUnexpectedValueType))
+		merr.Errors = append(merr.Errors, fmt.Errorf("%s: %w (%T / %v)", tag, dicomweb.ErrUnexpectedValueType, value, value))
 		return ""
 	}
 
@@ -28,7 +28,7 @@ func parseFirstString(res dicomweb.QIDOResponse, tag string, merr *multierror.Er
 func parseStringList(res dicomweb.QIDOResponse, tag string, merr *multierror.Error) []string {
 	value, ok := res.Get(tag)
 	if !ok {
-		merr.Errors = append(merr.Errors, fmt.Errorf("no studyInstanceUID found"))
+		merr.Errors = append(merr.Errors, fmt.Errorf("%s: no found", tag))
 		return nil
 	}
 
@@ -37,7 +37,7 @@ func parseStringList(res dicomweb.QIDOResponse, tag string, merr *multierror.Err
 	for _, value := range value {
 		id, ok := value.(string)
 		if !ok {
-			merr.Errors = append(merr.Errors, fmt.Errorf("studyInstanceUID: %w", dicomweb.ErrUnexpectedValueType))
+			merr.Errors = append(merr.Errors, fmt.Errorf("%s: %w (%T / %c)", tag, dicomweb.ErrUnexpectedValueType, value, value))
 			return nil
 		}
 		result = append(result, id)

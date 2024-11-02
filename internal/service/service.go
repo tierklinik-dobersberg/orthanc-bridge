@@ -88,8 +88,8 @@ func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[orthan
 			StudyUid:    parseFirstString(r, dicomweb.StudyInstanceUID, merr),
 			Time:        timestamppb.New(parseDateAndTime(r, dicomweb.StudyDate, dicomweb.StudyTime, merr)),
 			Modalities:  parseStringList(r, dicomweb.ModalitiesInStudy, merr),
-			PatientName: parseFirstString(r, dicomweb.PatientName, merr),
-			OwnerName:   parseFirstString(r, dicomweb.ResponsiblePerson, merr),
+			PatientName: parseSingleName(r, dicomweb.PatientName, merr),
+			OwnerName:   parseSingleName(r, dicomweb.ResponsiblePerson, merr),
 			Tags:        parseTags(r),
 		}
 
