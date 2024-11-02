@@ -82,8 +82,9 @@ func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[orthan
 
 	response := new(orthanc_bridgev1.ListStudiesResponse)
 
-	merr := new(multierror.Error)
 	for _, r := range res {
+		merr := new(multierror.Error)
+
 		study := &orthanc_bridgev1.Study{
 			StudyUid:    parseFirstString(r, dicomweb.StudyInstanceUID, merr),
 			Time:        timestamppb.New(parseDateAndTime(r, dicomweb.StudyDate, dicomweb.StudyTime, merr)),
@@ -93,6 +94,12 @@ func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[orthan
 			Tags:        parseTags(r),
 		}
 
+		// bail out if there were errors
+		if err := merr.ErrorOrNil(); err != nil {
+			slog.Info("failed to get study", "id", study.StudyUid, "error", err)
+			continue
+		}
+
 		// get series for the study
 		series, err := svc.Client.Query(ctx, dicomweb.QIDORequest{
 			Type:             dicomweb.Series,
@@ -100,15 +107,23 @@ func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[orthan
 			IncludeFields:    m.IncludeTags,
 		})
 		if err != nil {
-			merr.Errors = append(merr.Errors, fmt.Errorf("failed to fetch series: %w", err))
+			slog.Info("failed to fetch study series", "id", study.StudyUid, "error", err)
 			continue
 		}
 
 		for _, s := range series {
+			merr := new(multierror.Error)
+
 			seriesPb := &orthanc_bridgev1.Series{
 				SeriesUid: parseFirstString(s, dicomweb.SeriesInstanceUID, merr),
 				Time:      timestamppb.New(parseDateAndTime(s, dicomweb.SeriesDate, dicomweb.SeriesTime, merr)),
 				Tags:      parseTags(s),
+			}
+
+			// bail out if there were errors
+			if err := merr.ErrorOrNil(); err != nil {
+				slog.Info("failed to convert series", "id", study.StudyUid, "series", seriesPb.SeriesUid, "error", err)
+				continue
 			}
 
 			instances, err := svc.Client.Query(ctx, dicomweb.QIDORequest{
@@ -118,15 +133,21 @@ func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[orthan
 				IncludeFields:     m.IncludeTags,
 			})
 			if err != nil {
-				merr.Errors = append(merr.Errors, fmt.Errorf("failed to fetch series: %w", err))
+				slog.Info("failed to fetch instances", "id", study.StudyUid, "series", seriesPb.SeriesUid, "error", err)
 				continue
 			}
 
 			for _, i := range instances {
+				merr := new(multierror.Error)
+
 				ipb := &orthanc_bridgev1.Instance{
 					InstanceUid: parseFirstString(i, dicomweb.SOPInstanceUID, merr),
 					Time:        timestamppb.New(parseDateAndTime(i, dicomweb.InstanceCreationDate, dicomweb.InstanceCreationTime, merr)),
 					Tags:        parseTags(i),
+				}
+
+				if err := merr.ErrorOrNil(); err != nil {
+					slog.Info("failed to convert instance", "id", study.StudyUid, "series", seriesPb.SeriesUid, "instance", ipb.InstanceUid, "error", err)
 				}
 
 				seriesPb.Instances = append(seriesPb.Instances, ipb)
@@ -138,8 +159,8 @@ func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[orthan
 		response.Studies = append(response.Studies, study)
 	}
 
-	if err := merr.ErrorOrNil(); err != nil {
-		return nil, err
+	if len(res) > 0 && len(response.Studies) == 0 {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to convert response, no studies available"))
 	}
 
 	return connect.NewResponse(response), nil
