@@ -171,15 +171,17 @@ func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[orthan
 				}
 
 				// fetch the instance preview
-				bytes, mime, err := svc.Client.InstancePreview(ctx, study.StudyUid, seriesPb.SeriesUid, ipb.InstanceUid)
-				if err == nil {
-					ipb.Thumbnail = &orthanc_bridgev1.Thumbnail{
-						Mime: mime,
-						Data: bytes,
+				/*
+					bytes, mime, err := svc.Client.InstancePreview(ctx, study.StudyUid, seriesPb.SeriesUid, ipb.InstanceUid)
+					if err == nil {
+						ipb.Thumbnail = &orthanc_bridgev1.Thumbnail{
+							Mime: mime,
+							Data: bytes,
+						}
+					} else {
+						slog.Error("failed to fetch instance preview", "id", study.StudyUid, "series", seriesPb.SeriesUid, "instance", ipb.InstanceUid, "error", err)
 					}
-				} else {
-					slog.Error("failed to fetch instance preview", "id", study.StudyUid, "series", seriesPb.SeriesUid, "instance", ipb.InstanceUid, "error", err)
-				}
+				*/
 
 				seriesPb.Instances = append(seriesPb.Instances, ipb)
 			}
