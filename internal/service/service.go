@@ -106,10 +106,10 @@ func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[orthan
 
 		study := &orthanc_bridgev1.Study{
 			StudyUid:    parseFirstString(r, dicomweb.StudyInstanceUID, merr),
-			Time:        timestamppb.New(parseDateAndTime(r, dicomweb.StudyDate, dicomweb.StudyTime, merr)),
-			Modalities:  parseStringList(r, dicomweb.ModalitiesInStudy, merr),
-			PatientName: parseSingleName(r, dicomweb.PatientName, merr),
-			OwnerName:   parseSingleName(r, dicomweb.ResponsiblePerson, merr),
+			Time:        timestamppb.New(parseDateAndTime(r, dicomweb.StudyDate, dicomweb.StudyTime, nil)),
+			Modalities:  parseStringList(r, dicomweb.ModalitiesInStudy, nil),
+			PatientName: parseSingleName(r, dicomweb.PatientName, nil),
+			OwnerName:   parseSingleName(r, dicomweb.ResponsiblePerson, nil),
 			Tags:        parseTags(r),
 		}
 

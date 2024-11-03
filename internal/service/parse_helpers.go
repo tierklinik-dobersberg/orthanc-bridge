@@ -28,7 +28,9 @@ func parseFirstString(res dicomweb.QIDOResponse, tag string, merr *multierror.Er
 func parseStringList(res dicomweb.QIDOResponse, tag string, merr *multierror.Error) []string {
 	value, ok := res.Get(tag)
 	if !ok {
-		merr.Errors = append(merr.Errors, fmt.Errorf("%s: no found", tag))
+		if merr != nil {
+			merr.Errors = append(merr.Errors, fmt.Errorf("%s: no found", tag))
+		}
 		return nil
 	}
 
@@ -37,8 +39,11 @@ func parseStringList(res dicomweb.QIDOResponse, tag string, merr *multierror.Err
 	for _, value := range value {
 		id, ok := value.(string)
 		if !ok {
-			merr.Errors = append(merr.Errors, fmt.Errorf("%s: %w (%T / %c)", tag, dicomweb.ErrUnexpectedValueType, value, value))
-			return nil
+			if merr != nil {
+				merr.Errors = append(merr.Errors, fmt.Errorf("%s: %w (%T / %c)", tag, dicomweb.ErrUnexpectedValueType, value, value))
+			}
+
+			continue
 		}
 		result = append(result, id)
 	}
@@ -49,13 +54,17 @@ func parseStringList(res dicomweb.QIDOResponse, tag string, merr *multierror.Err
 func parseSingleName(res dicomweb.QIDOResponse, tag string, merr *multierror.Error) string {
 	name, err := dicomweb.ParsePN(res[tag])
 	if err != nil {
-		merr.Errors = append(merr.Errors, fmt.Errorf("%s: %w", tag, err))
+		if merr != nil {
+			merr.Errors = append(merr.Errors, fmt.Errorf("%s: %w", tag, err))
+		}
 
 		return ""
 	}
 
 	if len(name) == 0 {
-		merr.Errors = append(merr.Errors, fmt.Errorf("%s: no values", tag))
+		if merr != nil {
+			merr.Errors = append(merr.Errors, fmt.Errorf("%s: no values", tag))
+		}
 		return ""
 	}
 
