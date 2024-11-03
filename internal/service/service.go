@@ -170,7 +170,7 @@ func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[orthan
 					continue
 				}
 
-				// fetch the instance preview
+				// fetch the instance previewunset
 				/*
 					bytes, mime, err := svc.Client.InstancePreview(ctx, study.StudyUid, seriesPb.SeriesUid, ipb.InstanceUid)
 					if err == nil {

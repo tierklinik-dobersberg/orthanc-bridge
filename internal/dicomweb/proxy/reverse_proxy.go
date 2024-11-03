@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/config"
@@ -94,10 +95,14 @@ func (p *SingelHostProxy) buildProxy() (*httputil.ReverseProxy, error) {
 			req.SetBasicAuth(p.Username, p.Password)
 		}
 
-		// Set correct Orthanc headers
-
 		if host := p.RewriteHost; host != "" {
 			req.Host = host
+		}
+
+		// check for WADO-RS /rendered requests and fix the Accept header as
+		// orthanc does not accept image/* mime type
+		if strings.HasSuffix(req.URL.String(), "/rendered") {
+			req.Header.Set("Accept", "image/png")
 		}
 
 		logrus.Infof("forwarding to %s", req.URL.String())
