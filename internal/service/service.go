@@ -52,6 +52,12 @@ func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[orthan
 
 	m := req.Msg
 
+	// Apply paggination when set.
+	if pg := m.GetPagination(); pg != nil && pg.PageSize > 0 {
+		qidoReq.Limit = int(pg.PageSize)
+		qidoReq.Offset = int(pg.PageSize * pg.GetPage())
+	}
+
 	if dr := m.GetDateRange(); dr != nil {
 		from := dr.From.AsTimeInLocation(time.Local)
 		to := dr.To.AsTimeInLocation(time.Local)
