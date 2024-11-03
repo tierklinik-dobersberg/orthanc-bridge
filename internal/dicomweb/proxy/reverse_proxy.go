@@ -101,7 +101,7 @@ func (p *SingelHostProxy) buildProxy() (*httputil.ReverseProxy, error) {
 
 		// check for WADO-RS /rendered requests and fix the Accept header as
 		// orthanc does not accept image/* mime type
-		if strings.HasSuffix(req.URL.String(), "/rendered") {
+		if strings.HasSuffix(req.URL.Path, "/rendered") {
 			req.Header.Set("Accept", "image/png")
 		}
 
