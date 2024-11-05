@@ -192,6 +192,11 @@ func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[orthan
 		response.Studies = append(response.Studies, study)
 	}
 
+	// Sort the studies by time
+	sort.Sort(
+		sort.Reverse(StudyListByTime(response.Studies)),
+	)
+
 	if len(res) > 0 && len(response.Studies) == 0 {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to convert response, no studies available"))
 	}
