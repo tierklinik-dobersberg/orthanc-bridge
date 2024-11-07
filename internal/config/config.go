@@ -63,6 +63,10 @@ func LoadConfig(ctx context.Context, path string) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse configuration from environment: %w", err)
 	}
 
+	if _, err := url.Parse(cfg.PublicURL); err != nil {
+		return nil, fmt.Errorf("failed to parse publicUrl: %w", err)
+	}
+
 	if cfg.PublicListenAddress == "" {
 		cfg.PublicListenAddress = ":8080"
 	}

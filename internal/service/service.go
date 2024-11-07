@@ -6,10 +6,14 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"sort"
+	"sync"
 	"time"
 
 	connect "github.com/bufbuild/connect-go"
@@ -19,18 +23,28 @@ import (
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/config"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/dicomweb"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/orthanc"
+	"golang.org/x/exp/rand"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+type archiveEntry struct {
+	created time.Time
+	path    string
+}
 
 type Service struct {
 	orthanc_bridgev1connect.UnimplementedOrthancBridgeHandler
 
 	*config.Providers
+
+	rw       sync.RWMutex
+	archives map[string]archiveEntry
 }
 
 func New(p *config.Providers) *Service {
 	return &Service{
 		Providers: p,
+		archives:  make(map[string]archiveEntry),
 	}
 }
 
@@ -262,8 +276,45 @@ func (svc *Service) DownloadStudy(ctx context.Context, req *connect.Request[v1.D
 		return nil, fmt.Errorf("failed to finish archive: %w", err)
 	}
 
+	archiveId := getRandomString(32)
+
+	svc.rw.Lock()
+	defer svc.rw.Unlock()
+	svc.archives[archiveId] = archiveEntry{
+		created: time.Now(),
+		path:    archiveFile.Name(),
+	}
+
+	accessUrl, _ := url.Parse(svc.Config.PublicURL)
+	accessUrl.Path = path.Join(accessUrl.Path, "download", archiveId)
+
 	return connect.NewResponse(&v1.DownloadStudyResponse{
 		// TODO(ppacher): actually construct a download link
-		DownloadLink: archiveFile.Name(),
+		DownloadLink: accessUrl.String(),
 	}), nil
+}
+
+func (svc *Service) DownloadHandler(w http.ResponseWriter, r *http.Request) {
+	archiveId := r.PathValue("id")
+
+	svc.rw.RLock()
+	entry, ok := svc.archives[archiveId]
+	svc.rw.RUnlock()
+
+	if !ok {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+
+	http.ServeFile(w, r, entry.path)
+}
+
+var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+func getRandomString(n int) string {
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = letterRunes[rand.Intn(len(letterRunes))]
+	}
+	return string(b)
 }
