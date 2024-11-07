@@ -57,7 +57,8 @@ func CreateStudyArchive(ctx context.Context, client *orthanc.Client, studyUid st
 		for _, kind := range renderKinds {
 			instance := instanceMap[id]
 
-			if _, ok := instance.MainDicomTags["NumberOfFrames"]; ok && slices.Contains(renderKinds, orthanc.KindAVI) && kind != orthanc.KindAVI {
+			// skip JPEG and PNG images if we are going to create a AVI for multi-frame images
+			if _, ok := instance.MainDicomTags["NumberOfFrames"]; ok && slices.Contains(renderKinds, orthanc.KindAVI) && (kind == orthanc.KindJPEG || kind == orthanc.KindPNG) {
 				// skip it since we are going to create a MJPEG file for this instance anyway
 				continue
 			}
