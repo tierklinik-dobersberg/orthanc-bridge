@@ -245,7 +245,7 @@ func (svc *Service) DownloadStudy(ctx context.Context, req *connect.Request[v1.D
 	// Gather all instance IDS that we want to download.
 	filtered := make(map[string]string, len(instances))
 	for _, instance := range instances {
-		sopInstanceUid, ok := instance.MainDicomTags[dicomweb.SOPInstanceUID].(string)
+		sopInstanceUid, ok := instance.MainDicomTags["SOPInstanceUID"].(string)
 		if !ok {
 			slog.Error("invalid orthanc response, SOPInstanceUID is expected to be a string")
 			continue
