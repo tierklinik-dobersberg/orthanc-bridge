@@ -254,6 +254,8 @@ func (svc *Service) DownloadStudy(ctx context.Context, req *connect.Request[v1.D
 		if err := os.WriteFile(dest, blob, 0o600); err != nil {
 			return nil, fmt.Errorf("failed to write instance image/file to dist: %w", err)
 		}
+
+		slog.Info("succesfully downloaded instance file", "name", dest, "id", id, "sopInstanceUID", sopInstanceUID, "studyUid", req.Msg.StudyUid, "size", len(blob))
 	}
 
 	// Create the archive file and a zip writer
@@ -289,7 +291,6 @@ func (svc *Service) DownloadStudy(ctx context.Context, req *connect.Request[v1.D
 	accessUrl.Path = path.Join(accessUrl.Path, "download", archiveId)
 
 	return connect.NewResponse(&v1.DownloadStudyResponse{
-		// TODO(ppacher): actually construct a download link
 		DownloadLink: accessUrl.String(),
 	}), nil
 }
@@ -305,6 +306,8 @@ func (svc *Service) DownloadHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
+
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+filepath.Base(entry.path)+"\"")
 
 	http.ServeFile(w, r, entry.path)
 }
