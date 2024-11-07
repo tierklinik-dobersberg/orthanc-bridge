@@ -1,21 +1,24 @@
 package service
 
 import (
+	"archive/zip"
 	"context"
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"slices"
 	"sort"
 	"time"
 
 	connect "github.com/bufbuild/connect-go"
 	"github.com/hashicorp/go-multierror"
-	orthanc_bridgev1 "github.com/tierklinik-dobersberg/apis/gen/go/tkd/orthanc_bridge/v1"
+	v1 "github.com/tierklinik-dobersberg/apis/gen/go/tkd/orthanc_bridge/v1"
 	"github.com/tierklinik-dobersberg/apis/gen/go/tkd/orthanc_bridge/v1/orthanc_bridgev1connect"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/config"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/dicomweb"
-	"google.golang.org/protobuf/types/known/structpb"
+	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/orthanc"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -31,8 +34,8 @@ func New(p *config.Providers) *Service {
 	}
 }
 
-func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[orthanc_bridgev1.ListStudiesRequest]) (*connect.Response[orthanc_bridgev1.ListStudiesResponse], error) {
-	if svc.Client == nil {
+func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[v1.ListStudiesRequest]) (*connect.Response[v1.ListStudiesResponse], error) {
+	if svc.DICOMWebClient == nil {
 		return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("no dicomweb client configured"))
 	}
 
@@ -89,7 +92,7 @@ func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[orthan
 		qidoReq.FilterTags[values.Tag] = values.Value
 	}
 
-	res, err := svc.Client.Query(ctx, qidoReq)
+	res, err := svc.DICOMWebClient.Query(ctx, qidoReq)
 	if err != nil {
 		if re, ok := err.(*dicomweb.ResponseError); ok {
 			body, _ := io.ReadAll(re.Response.Body)
@@ -99,12 +102,12 @@ func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[orthan
 		return nil, fmt.Errorf("failed to query for studies: %w", err)
 	}
 
-	response := new(orthanc_bridgev1.ListStudiesResponse)
+	response := new(v1.ListStudiesResponse)
 
 	for _, r := range res {
 		merr := new(multierror.Error)
 
-		study := &orthanc_bridgev1.Study{
+		study := &v1.Study{
 			StudyUid:    parseFirstString(r, dicomweb.StudyInstanceUID, merr),
 			Time:        timestamppb.New(parseDateAndTime(r, dicomweb.StudyDate, dicomweb.StudyTime, nil)),
 			Modalities:  parseStringList(r, dicomweb.ModalitiesInStudy, nil),
@@ -120,7 +123,7 @@ func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[orthan
 		}
 
 		// get series for the study
-		series, err := svc.Client.Query(ctx, dicomweb.QIDORequest{
+		series, err := svc.DICOMWebClient.Query(ctx, dicomweb.QIDORequest{
 			Type:             dicomweb.Series,
 			StudyInstanceUID: study.StudyUid,
 			IncludeFields:    qidoReq.IncludeFields,
@@ -133,7 +136,7 @@ func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[orthan
 		for _, s := range series {
 			merr := new(multierror.Error)
 
-			seriesPb := &orthanc_bridgev1.Series{
+			seriesPb := &v1.Series{
 				SeriesUid: parseFirstString(s, dicomweb.SeriesInstanceUID, merr),
 				Time:      timestamppb.New(parseDateAndTime(s, dicomweb.SeriesDate, dicomweb.SeriesTime, nil)),
 				Tags:      parseTags(s),
@@ -145,7 +148,7 @@ func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[orthan
 				continue
 			}
 
-			instances, err := svc.Client.Query(ctx, dicomweb.QIDORequest{
+			instances, err := svc.DICOMWebClient.Query(ctx, dicomweb.QIDORequest{
 				Type:              dicomweb.Instance,
 				StudyInstanceUID:  study.StudyUid,
 				SeriesInstanceUID: seriesPb.SeriesUid,
@@ -159,7 +162,7 @@ func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[orthan
 			for _, i := range instances {
 				merr := new(multierror.Error)
 
-				ipb := &orthanc_bridgev1.Instance{
+				ipb := &v1.Instance{
 					InstanceUid: parseFirstString(i, dicomweb.SOPInstanceUID, merr),
 					Time:        timestamppb.New(parseDateAndTime(i, dicomweb.InstanceCreationDate, dicomweb.InstanceCreationTime, nil)),
 					Tags:        parseTags(i),
@@ -169,19 +172,6 @@ func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[orthan
 					slog.Error("failed to convert instance", "id", study.StudyUid, "series", seriesPb.SeriesUid, "instance", ipb.InstanceUid, "error", err)
 					continue
 				}
-
-				// fetch the instance previewunset
-				/*
-					bytes, mime, err := svc.Client.InstancePreview(ctx, study.StudyUid, seriesPb.SeriesUid, ipb.InstanceUid)
-					if err == nil {
-						ipb.Thumbnail = &orthanc_bridgev1.Thumbnail{
-							Mime: mime,
-							Data: bytes,
-						}
-					} else {
-						slog.Error("failed to fetch instance preview", "id", study.StudyUid, "series", seriesPb.SeriesUid, "instance", ipb.InstanceUid, "error", err)
-					}
-				*/
 
 				seriesPb.Instances = append(seriesPb.Instances, ipb)
 			}
@@ -204,29 +194,76 @@ func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[orthan
 	return connect.NewResponse(response), nil
 }
 
-func parseTags(r dicomweb.QIDOResponse) []*orthanc_bridgev1.DICOMTag {
-	var result []*orthanc_bridgev1.DICOMTag
-
-	for key, t := range r {
-		var values []*structpb.Value
-
-		for _, v := range t.Value {
-			vpb, err := structpb.NewValue(v)
-			if err != nil {
-				slog.Error("failed to convert value for dicom tag", "tag", key, "error", err)
-				continue
-			}
-
-			values = append(values, vpb)
-		}
-
-		result = append(result, &orthanc_bridgev1.DICOMTag{
-			Tag:                 key,
-			ValueRepresentation: t.VR,
-			Value:               values,
-			Name:                dicomweb.TagToName[key],
-		})
+func (svc *Service) DownloadStudy(ctx context.Context, req *connect.Request[v1.DownloadStudyRequest]) (*connect.Response[v1.DownloadStudyResponse], error) {
+	if svc.OrthancClient == nil {
+		return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("no default orthanc instance configured"))
 	}
 
-	return result
+	instances, err := svc.OrthancClient.FindInstances(ctx, orthanc.ByStudyUID(req.Msg.StudyUid))
+	if err != nil {
+		return nil, fmt.Errorf("failed to contact orthanc API: %w", err)
+	}
+
+	// Gather all instance IDS that we want to download.
+	filtered := make(map[string]string, len(instances))
+	for _, instance := range instances {
+		sopInstanceUid, ok := instance.MainDicomTags[dicomweb.SOPInstanceUID].(string)
+		if !ok {
+			slog.Error("invalid orthanc response, SOPInstanceUID is expected to be a string")
+			continue
+		}
+
+		if len(req.Msg.InstanceUids) == 0 || slices.Contains(req.Msg.InstanceUids, sopInstanceUid) {
+			filtered[instance.ID] = sopInstanceUid
+		}
+	}
+
+	// create a temporary directory and download all files into it
+	dir, err := os.MkdirTemp("", "archive-"+req.Msg.StudyUid+"-raw-")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temporary directory: %w", err)
+	}
+	// make sure we clean up afterwards
+	defer os.RemoveAll(dir)
+
+	// download each instance to the temporary directory
+	// TODO(ppacher): instead of reading the images to RAM and then writting
+	// 				  to the file consider streaming the response directly to the FS
+	for id, sopInstanceUID := range filtered {
+		// TODO(ppacher): add support for the different download/render types
+		blob, err := svc.Providers.OrthancClient.GetRenderedInstance(ctx, id, orthanc.KindPNG)
+		if err != nil {
+			return nil, fmt.Errorf("failed to download instance %s (%s): %w", id, sopInstanceUID, err)
+		}
+
+		dest := filepath.Join(dir, sopInstanceUID+".png")
+		if err := os.WriteFile(dest, blob, 0o600); err != nil {
+			return nil, fmt.Errorf("failed to write instance image/file to dist: %w", err)
+		}
+	}
+
+	// Create the archive file and a zip writer
+	archiveFile, err := os.CreateTemp("", "archive-"+req.Msg.StudyUid+"-*.zip")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temporary archive file: %w", err)
+	}
+	defer archiveFile.Close()
+	archive := zip.NewWriter(archiveFile)
+
+	if err := archive.AddFS(os.DirFS(dir)); err != nil {
+		defer os.Remove(archiveFile.Name())
+
+		return nil, fmt.Errorf("failed to create archive: %w", err)
+	}
+
+	if err := archive.Close(); err != nil {
+		defer os.Remove(archiveFile.Name())
+
+		return nil, fmt.Errorf("failed to finish archive: %w", err)
+	}
+
+	return connect.NewResponse(&v1.DownloadStudyResponse{
+		// TODO(ppacher): actually construct a download link
+		DownloadLink: archiveFile.Name(),
+	}), nil
 }

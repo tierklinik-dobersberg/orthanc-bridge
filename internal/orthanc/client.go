@@ -57,7 +57,7 @@ func NewClient(baseURL string, opts ...ClientOption) (*Client, error) {
 	return cli, nil
 }
 
-func (cli *Client) doRequest(ctx context.Context, method string, endpoint urlpath.Path, params map[string]string, queryOpts []QueryOption, body any, response any) error {
+func (cli *Client) doRequest(ctx context.Context, method string, endpoint urlpath.Path, params map[string]string, queryOpts []QueryOption, body any, response any, requestOptions ...RequestOption) error {
 	finalizedEndpoint, ok := endpoint.Build(urlpath.Match{
 		Params: params,
 	})
@@ -102,6 +102,10 @@ func (cli *Client) doRequest(ctx context.Context, method string, endpoint urlpat
 		return err
 	}
 
+	for _, opt := range requestOptions {
+		opt(req)
+	}
+
 	res, err := cli.cli.Do(req)
 	if err != nil {
 		return err
@@ -115,12 +119,17 @@ func (cli *Client) doRequest(ctx context.Context, method string, endpoint urlpat
 			return err
 		}
 
-		dec := json.NewDecoder(bytes.NewReader(body))
+		switch v := response.(type) {
+		case *[]byte:
+			*v = body
+		default:
+			dec := json.NewDecoder(bytes.NewReader(body))
 
-		if err := dec.Decode(response); err != nil {
-			logrus.Infof("body: \n%s", string(body))
+			if err := dec.Decode(response); err != nil {
+				logrus.Infof("body: \n%s", string(body))
 
-			return err
+				return err
+			}
 		}
 	}
 

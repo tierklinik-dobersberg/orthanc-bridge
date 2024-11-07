@@ -2,11 +2,14 @@ package service
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
 	"github.com/hashicorp/go-multierror"
+	orthanc_bridgev1 "github.com/tierklinik-dobersberg/apis/gen/go/tkd/orthanc_bridge/v1"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/dicomweb"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 func parseFirstString(res dicomweb.QIDOResponse, tag string, merr *multierror.Error) string {
@@ -103,4 +106,31 @@ func parseDateAndTime(res dicomweb.QIDOResponse, dateTag, timeTag string, merr *
 	}
 
 	return times[0].At(dates[0])
+}
+
+func parseTags(r dicomweb.QIDOResponse) []*orthanc_bridgev1.DICOMTag {
+	var result []*orthanc_bridgev1.DICOMTag
+
+	for key, t := range r {
+		var values []*structpb.Value
+
+		for _, v := range t.Value {
+			vpb, err := structpb.NewValue(v)
+			if err != nil {
+				slog.Error("failed to convert value for dicom tag", "tag", key, "error", err)
+				continue
+			}
+
+			values = append(values, vpb)
+		}
+
+		result = append(result, &orthanc_bridgev1.DICOMTag{
+			Tag:                 key,
+			ValueRepresentation: t.VR,
+			Value:               values,
+			Name:                dicomweb.TagToName[key],
+		})
+	}
+
+	return result
 }

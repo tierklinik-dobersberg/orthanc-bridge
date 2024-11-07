@@ -28,8 +28,8 @@ type (
 	}
 
 	FindStudiesResponse struct {
-		FindResponse `json:",inline"`
-		Series       []string
+		ExpandedFindResponse `json:",inline"`
+		Series               []string
 	}
 )
 

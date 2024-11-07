@@ -1,6 +1,7 @@
 package orthanc
 
 import (
+	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/dicomweb"
 	"github.com/ucarion/urlpath"
 )
 
@@ -42,7 +43,7 @@ type (
 		Since            int             `json:",omitempty"`
 	}
 
-	FindResponse struct {
+	ExpandedFindResponse struct {
 		ID            string
 		IsStable      bool
 		MainDicomTags map[string]any
@@ -52,19 +53,19 @@ type (
 
 func ByResponsiblePerson(person string) FindOption {
 	return func(fr *FindRequest) {
-		fr.Query["ResponsiblePerson"] = person
+		fr.Query[dicomweb.ResponsiblePerson] = person
 	}
 }
 
 func ByPatientID(id string) FindOption {
 	return func(fr *FindRequest) {
-		fr.Query["PatientID"] = id
+		fr.Query[dicomweb.PatientID] = id
 	}
 }
 
 func ByPatientName(name string) FindOption {
 	return func(fr *FindRequest) {
-		fr.Query["PatientName"] = name
+		fr.Query[dicomweb.PatientName] = name
 	}
 }
 
@@ -77,5 +78,11 @@ func ByTag(tag string, value string) FindOption {
 func WithFindLimit(limit int) FindOption {
 	return func(fr *FindRequest) {
 		fr.Limit = limit
+	}
+}
+
+func ByStudyUID(uid string) FindOption {
+	return func(fr *FindRequest) {
+		fr.Query[dicomweb.StudyInstanceUID] = uid
 	}
 }

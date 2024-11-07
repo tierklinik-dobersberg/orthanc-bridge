@@ -2,15 +2,18 @@ package orthanc
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/ucarion/urlpath"
 )
 
 var (
-	instanceList    = urlpath.New("/instances")
-	getInstance     = urlpath.New("/instances/:id")
-	getInstanceTags = urlpath.New("/instances/:id/simplified-tags")
+	instanceList       = urlpath.New("/instances")
+	getInstance        = urlpath.New("/instances/:id")
+	getInstanceDicom   = urlpath.New("/instances/:id/file")
+	getInstancePreview = urlpath.New("/instances/:id/preview")
+	getInstanceTags    = urlpath.New("/instances/:id/simplified-tags")
 )
 
 type (
@@ -24,7 +27,7 @@ type (
 	}
 
 	FindInstancesResponse struct {
-		FindResponse `json:",inline"`
+		ExpandedFindResponse `json:",inline"`
 	}
 )
 
@@ -71,4 +74,55 @@ func (c *Client) FindInstances(ctx context.Context, findOpts ...FindOption) (res
 	}
 
 	return response, nil
+}
+
+type RenderKind int
+
+const (
+	KindDICOM = RenderKind(iota)
+	KindPNG
+	KindJPEG
+)
+
+func (c *Client) GetRenderedInstance(ctx context.Context, instanceId string, accept RenderKind) ([]byte, error) {
+	var (
+		p            urlpath.Path
+		acceptHeader string
+	)
+
+	switch accept {
+	case KindDICOM:
+		p = getInstanceDicom
+	case KindPNG:
+		p = getInstancePreview
+		acceptHeader = "image/png"
+	case KindJPEG:
+		p = getInstancePreview
+		acceptHeader = "image/jpeg"
+
+	default:
+		return nil, fmt.Errorf("invalid download type")
+	}
+
+	var response []byte
+	if err := c.doRequest(
+		ctx,
+		http.MethodGet,
+		p,
+		map[string]string{
+			"id": instanceId,
+		},
+		nil,
+		nil,
+		&response,
+		func(r *http.Request) {
+			if acceptHeader != "" {
+				r.Header.Set("Accept", acceptHeader)
+			}
+		},
+	); err != nil {
+		return nil, fmt.Errorf("failed to download instance: %w", err)
+	}
+
+	return ([]byte)(response), nil
 }

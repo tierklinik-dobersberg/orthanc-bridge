@@ -17,7 +17,7 @@ type (
 	ListPatientsResponse []GetPatientResponse
 
 	FindPatientResponse struct {
-		FindResponse `json:",inline"`
+		ExpandedFindResponse `json:",inline"`
 
 		Studies []string
 	}

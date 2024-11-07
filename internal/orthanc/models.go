@@ -1,6 +1,7 @@
 package orthanc
 
 import (
+	"net/http"
 	"net/url"
 	"strconv"
 )
@@ -30,6 +31,8 @@ type (
 	SimplifiedTags map[string]string
 
 	QueryOption func(q url.Values)
+
+	RequestOption func(r *http.Request)
 )
 
 func WithLimit(limit int) QueryOption {

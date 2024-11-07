@@ -5,17 +5,20 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"path"
 	"path/filepath"
 
 	"github.com/tierklinik-dobersberg/apis/gen/go/tkd/idm/v1/idmv1connect"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/dicomweb"
+	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/orthanc"
 )
 
 type Providers struct {
 	Users idmv1connect.UserServiceClient
 	Roles idmv1connect.RoleServiceClient
 
-	Client *dicomweb.Client
+	DICOMWebClient *dicomweb.Client
+	OrthancClient  *orthanc.Client
 
 	Config Config
 }
@@ -45,13 +48,24 @@ func NewProviders(ctx context.Context, cfg Config) (*Providers, error) {
 		u.Path = filepath.Join(u.Path, instance.DicomWeb)
 	}
 
-	defaultClient := dicomweb.NewClient(u.String())
+	webClient := dicomweb.NewClient((&url.URL{
+		Scheme: u.Scheme,
+		Host:   u.Host,
+		Path:   path.Join(u.Path, instance.DicomWeb),
+		User:   u.User,
+	}).String())
+
+	orthancClient, err := orthanc.NewClient(u.String())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create orthanc client: %w", err)
+	}
 
 	p := &Providers{
-		Users:  idmv1connect.NewUserServiceClient(httpClient, cfg.IdmURL),
-		Roles:  idmv1connect.NewRoleServiceClient(httpClient, cfg.IdmURL),
-		Client: defaultClient,
-		Config: cfg,
+		Users:          idmv1connect.NewUserServiceClient(httpClient, cfg.IdmURL),
+		Roles:          idmv1connect.NewRoleServiceClient(httpClient, cfg.IdmURL),
+		DICOMWebClient: webClient,
+		OrthancClient:  orthancClient,
+		Config:         cfg,
 	}
 
 	return p, nil

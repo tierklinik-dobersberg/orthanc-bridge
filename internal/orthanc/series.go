@@ -28,7 +28,7 @@ type (
 	}
 
 	FindSeriesResponse struct {
-		FindResponse `json:",inline"`
+		ExpandedFindResponse `json:",inline"`
 
 		Instances []string
 	}
