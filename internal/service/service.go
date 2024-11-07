@@ -27,7 +27,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-type archiveEntry struct {
+type downloadEntry struct {
 	created time.Time
 	path    string
 }
@@ -37,14 +37,14 @@ type Service struct {
 
 	*config.Providers
 
-	rw       sync.RWMutex
-	archives map[string]archiveEntry
+	rw        sync.RWMutex
+	downloads map[string]downloadEntry
 }
 
 func New(p *config.Providers) *Service {
 	return &Service{
 		Providers: p,
-		archives:  make(map[string]archiveEntry),
+		downloads: make(map[string]downloadEntry),
 	}
 }
 
@@ -218,6 +218,8 @@ func (svc *Service) DownloadStudy(ctx context.Context, req *connect.Request[v1.D
 		return nil, fmt.Errorf("failed to contact orthanc API: %w", err)
 	}
 
+	slog.Info("got instances for study", "studyUid", req.Msg.StudyUid, "count", len(instances))
+
 	// Gather all instance IDS that we want to download.
 	filtered := make(map[string]string, len(instances))
 	for _, instance := range instances {
@@ -228,8 +230,14 @@ func (svc *Service) DownloadStudy(ctx context.Context, req *connect.Request[v1.D
 		}
 
 		if len(req.Msg.InstanceUids) == 0 || slices.Contains(req.Msg.InstanceUids, sopInstanceUid) {
+			slog.Info("marking DICOM instance for download", "studyUid", req.Msg.StudyUid, "sopInstanceUid", sopInstanceUid, "id", instance.ID)
 			filtered[instance.ID] = sopInstanceUid
 		}
+	}
+
+	// ensure there are actual instances to download
+	if len(filtered) == 0 {
+		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("no instances to download"))
 	}
 
 	// create a temporary directory and download all files into it
@@ -244,6 +252,8 @@ func (svc *Service) DownloadStudy(ctx context.Context, req *connect.Request[v1.D
 	// TODO(ppacher): instead of reading the images to RAM and then writting
 	// 				  to the file consider streaming the response directly to the FS
 	for id, sopInstanceUID := range filtered {
+		slog.Info("downloading DICOM instance", "id", id)
+
 		// TODO(ppacher): add support for the different download/render types
 		blob, err := svc.Providers.OrthancClient.GetRenderedInstance(ctx, id, orthanc.KindPNG)
 		if err != nil {
@@ -282,7 +292,7 @@ func (svc *Service) DownloadStudy(ctx context.Context, req *connect.Request[v1.D
 
 	svc.rw.Lock()
 	defer svc.rw.Unlock()
-	svc.archives[archiveId] = archiveEntry{
+	svc.downloads[archiveId] = downloadEntry{
 		created: time.Now(),
 		path:    archiveFile.Name(),
 	}
@@ -299,7 +309,7 @@ func (svc *Service) DownloadHandler(w http.ResponseWriter, r *http.Request) {
 	archiveId := r.PathValue("id")
 
 	svc.rw.RLock()
-	entry, ok := svc.archives[archiveId]
+	entry, ok := svc.downloads[archiveId]
 	svc.rw.RUnlock()
 
 	if !ok {
