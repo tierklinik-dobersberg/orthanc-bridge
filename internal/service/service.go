@@ -1,14 +1,12 @@
 package service
 
 import (
-	"archive/zip"
 	"context"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
-	"os"
 	"path"
 	"path/filepath"
 	"slices"
@@ -23,6 +21,7 @@ import (
 	"github.com/tierklinik-dobersberg/apis/gen/go/tkd/orthanc_bridge/v1/orthanc_bridgev1connect"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/config"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/dicomweb"
+	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/export"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/orthanc"
 	"golang.org/x/exp/rand"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -232,6 +231,7 @@ func (svc *Service) DownloadStudy(ctx context.Context, req *connect.Request[v1.D
 
 	study := studies[0]
 
+	archiveId := getRandomString(32)
 	patientName, _ := study.PatientMainDicomTags["PatientName"].(string)
 	ownerName, _ := study.PatientMainDicomTags["ResponsiblePerson"].(string)
 
@@ -242,81 +242,22 @@ func (svc *Service) DownloadStudy(ctx context.Context, req *connect.Request[v1.D
 
 	slog.Info("got instances for study", "studyUid", req.Msg.StudyUid, "count", len(instances))
 
-	// Gather all instance IDS that we want to download.
-	filtered := make(map[string]string, len(instances))
-	for _, instance := range instances {
-		sopInstanceUid, ok := instance.MainDicomTags["SOPInstanceUID"].(string)
-		if !ok {
-			slog.Error("invalid orthanc response, SOPInstanceUID is expected to be a string")
-			continue
-		}
-
-		if len(req.Msg.InstanceUids) == 0 || slices.Contains(req.Msg.InstanceUids, sopInstanceUid) {
-			slog.Info("marking DICOM instance for download", "studyUid", req.Msg.StudyUid, "sopInstanceUid", sopInstanceUid, "id", instance.ID)
-			filtered[instance.ID] = sopInstanceUid
-		}
-	}
-
-	// ensure there are actual instances to download
-	if len(filtered) == 0 {
-		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("no instances to download"))
-	}
-
-	// create a temporary directory and download all files into it
-	dir, err := os.MkdirTemp("", "archive-"+req.Msg.StudyUid+"-raw-")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create temporary directory: %w", err)
-	}
-	// make sure we clean up afterwards
-	defer os.RemoveAll(dir)
-
-	// download each instance to the temporary directory
-	// TODO(ppacher): instead of reading the images to RAM and then writting
-	// 				  to the file consider streaming the response directly to the FS
-	for id, sopInstanceUID := range filtered {
-		slog.Info("downloading DICOM instance", "id", id)
-
-		// TODO(ppacher): add support for the different download/render types
-		blob, err := svc.Providers.OrthancClient.GetRenderedInstance(ctx, id, orthanc.KindPNG)
+	var resourcePath string
+	if len(req.Msg.InstanceUids) != 1 {
+		var err error
+		resourcePath, err = export.CreateStudyArchive(ctx, svc.OrthancClient, req.Msg.StudyUid, instances, req.Msg.InstanceUids, []orthanc.RenderKind{orthanc.KindPNG})
 		if err != nil {
-			return nil, fmt.Errorf("failed to download instance %s (%s): %w", id, sopInstanceUID, err)
+			return nil, err
 		}
-
-		dest := filepath.Join(dir, sopInstanceUID+".png")
-		if err := os.WriteFile(dest, blob, 0o600); err != nil {
-			return nil, fmt.Errorf("failed to write instance image/file to dist: %w", err)
-		}
-
-		slog.Info("succesfully downloaded instance file", "name", dest, "id", id, "sopInstanceUID", sopInstanceUID, "studyUid", req.Msg.StudyUid, "size", len(blob))
+	} else {
+		return nil, connect.NewError(connect.CodeUnimplemented, fmt.Errorf("retrieving a single instance is not yet supported"))
 	}
-
-	// Create the archive file and a zip writer
-	archiveFile, err := os.CreateTemp("", "archive-"+req.Msg.StudyUid+"-*.zip")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create temporary archive file: %w", err)
-	}
-	defer archiveFile.Close()
-	archive := zip.NewWriter(archiveFile)
-
-	if err := archive.AddFS(os.DirFS(dir)); err != nil {
-		defer os.Remove(archiveFile.Name())
-
-		return nil, fmt.Errorf("failed to create archive: %w", err)
-	}
-
-	if err := archive.Close(); err != nil {
-		defer os.Remove(archiveFile.Name())
-
-		return nil, fmt.Errorf("failed to finish archive: %w", err)
-	}
-
-	archiveId := getRandomString(32)
 
 	svc.rw.Lock()
 	defer svc.rw.Unlock()
 	svc.downloads[archiveId] = downloadEntry{
 		created:     time.Now(),
-		path:        archiveFile.Name(),
+		path:        resourcePath,
 		patientName: patientName,
 		ownerName:   ownerName,
 	}
