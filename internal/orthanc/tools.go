@@ -44,10 +44,11 @@ type (
 	}
 
 	ExpandedFindResponse struct {
-		ID            string
-		IsStable      bool
-		MainDicomTags map[string]any
-		Type          string
+		ID                   string
+		IsStable             bool
+		MainDicomTags        map[string]any
+		PatientMainDicomTags map[string]any
+		Type                 string
 	}
 )
 

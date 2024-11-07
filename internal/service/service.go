@@ -232,8 +232,8 @@ func (svc *Service) DownloadStudy(ctx context.Context, req *connect.Request[v1.D
 
 	study := studies[0]
 
-	patientName, _ := study.MainDicomTags["PatientName"].(string)
-	ownerName, _ := study.MainDicomTags["ResponsiblePerson"].(string)
+	patientName, _ := study.PatientMainDicomTags["PatientName"].(string)
+	ownerName, _ := study.PatientMainDicomTags["ResponsiblePerson"].(string)
 
 	instances, err := svc.OrthancClient.FindInstances(ctx, orthanc.ByStudyUID(req.Msg.StudyUid))
 	if err != nil {
