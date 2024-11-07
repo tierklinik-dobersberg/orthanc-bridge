@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -28,8 +29,10 @@ import (
 )
 
 type downloadEntry struct {
-	created time.Time
-	path    string
+	created     time.Time
+	path        string
+	patientName string
+	ownerName   string
 }
 
 type Service struct {
@@ -213,6 +216,25 @@ func (svc *Service) DownloadStudy(ctx context.Context, req *connect.Request[v1.D
 		return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("no default orthanc instance configured"))
 	}
 
+	// first, read the study metadata
+	studies, err := svc.OrthancClient.FindStudy(ctx, orthanc.ByStudyUID(req.Msg.StudyUid))
+	if err != nil {
+		return nil, fmt.Errorf("failed to find study: %w", err)
+	}
+
+	switch {
+	case len(studies) == 0:
+		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("study with uid %q not found", req.Msg.StudyUid))
+
+	case len(studies) > 1:
+		return nil, connect.NewError(connect.CodeUnknown, fmt.Errorf("to many results"))
+	}
+
+	study := studies[0]
+
+	patientName, _ := study.MainDicomTags["PatientName"].(string)
+	ownerName, _ := study.MainDicomTags["ResponsiblePerson"].(string)
+
 	instances, err := svc.OrthancClient.FindInstances(ctx, orthanc.ByStudyUID(req.Msg.StudyUid))
 	if err != nil {
 		return nil, fmt.Errorf("failed to contact orthanc API: %w", err)
@@ -293,8 +315,10 @@ func (svc *Service) DownloadStudy(ctx context.Context, req *connect.Request[v1.D
 	svc.rw.Lock()
 	defer svc.rw.Unlock()
 	svc.downloads[archiveId] = downloadEntry{
-		created: time.Now(),
-		path:    archiveFile.Name(),
+		created:     time.Now(),
+		path:        archiveFile.Name(),
+		patientName: patientName,
+		ownerName:   ownerName,
 	}
 
 	accessUrl, _ := url.Parse(svc.Config.PublicURL)
@@ -317,7 +341,26 @@ func (svc *Service) DownloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Disposition", "attachment; filename=\""+filepath.Base(entry.path)+"\"")
+	filename := filepath.Base(entry.path)
+
+	replace := func(s string) string {
+		s = strings.ReplaceAll(s, "ERROR", "")
+		s = strings.ReplaceAll(s, ",", "-")
+		s = strings.ReplaceAll(s, " ", "-")
+
+		return s
+	}
+
+	if entry.ownerName != "" || entry.patientName != "" {
+		parts := []string{
+			replace(entry.ownerName),
+			replace(entry.patientName),
+		}
+
+		filename = strings.Join(parts, "-") + filepath.Ext(entry.path)
+	}
+
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+filename+"\"")
 
 	http.ServeFile(w, r, entry.path)
 }
