@@ -257,6 +257,9 @@ func (svc *Service) DownloadStudy(ctx context.Context, req *connect.Request[v1.D
 		case v1.DownloadType_PNG:
 			v = orthanc.KindPNG
 
+		case v1.DownloadType_AVI:
+			v = orthanc.KindAVI
+
 		default:
 			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("unsupported or unspecified render kind: %q", t))
 		}

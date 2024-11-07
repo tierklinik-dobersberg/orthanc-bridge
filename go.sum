@@ -108,6 +108,8 @@ github.com/tierklinik-dobersberg/apis v0.15.0 h1:q5Pytxx2g5a7EyK4SyUydox6dxaNscS
 github.com/tierklinik-dobersberg/apis v0.15.0/go.mod h1:gtOs0/fU+Cxp2BafdcWTWxJ8yQ/GP5GfHeS9dK0t6p0=
 github.com/tierklinik-dobersberg/apis v0.16.0 h1:JTOiPa2pd4EQPpz1QJmZYTDTta407HTkwlKXkNPizx0=
 github.com/tierklinik-dobersberg/apis v0.16.0/go.mod h1:gtOs0/fU+Cxp2BafdcWTWxJ8yQ/GP5GfHeS9dK0t6p0=
+github.com/tierklinik-dobersberg/apis v0.17.0 h1:wPRq4XbWKp55n6tQzAnw4yNI3dGIMr7C73+VDwPRxUs=
+github.com/tierklinik-dobersberg/apis v0.17.0/go.mod h1:gtOs0/fU+Cxp2BafdcWTWxJ8yQ/GP5GfHeS9dK0t6p0=
 github.com/ucarion/urlpath v0.0.0-20200424170820-7ccc79b76bbb h1:Ywfo8sUltxogBpFuMOFRrrSifO788kAFxmvVw31PtQQ=
 github.com/ucarion/urlpath v0.0.0-20200424170820-7ccc79b76bbb/go.mod h1:ikPs9bRWicNw3S7XpJ8sK/smGwU9WcSVU3dy9qahYBM=
 golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2/go.mod h1:djNgcEr1/C05ACkg1iLfiJU5Ep61QUkGW8qpdssI0+w=
