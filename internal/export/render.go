@@ -1,9 +1,11 @@
 package export
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"image/jpeg"
 	"os"
 	"strconv"
 
@@ -35,15 +37,24 @@ func render(ctx context.Context, cli *orthanc.Client, instance orthanc.FindInsta
 	tmpFile.Close()
 	defer os.Remove(tmpFile.Name())
 
-	writer, err := mjpeg.New(tmpFile.Name(), 2000, 2000, 10)
-	if err != nil {
-		return nil, err
-	}
+	var writer mjpeg.AviWriter
 
 	for i := 1; i <= int(conv); i++ {
 		blob, err := cli.GetRenderedInstance(ctx, instance.ID, i, orthanc.KindJPEG)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get rendered frame: %w", err)
+		}
+
+		if writer == nil {
+			img, err := jpeg.Decode(bytes.NewReader(blob))
+			if err != nil {
+				return nil, fmt.Errorf("failed to decode JPEG image: %w", err)
+			}
+
+			writer, err = mjpeg.New(tmpFile.Name(), int32(img.Bounds().Dx()), int32(img.Bounds().Dy()), 10)
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		if err := writer.AddFrame(blob); err != nil {
