@@ -32,6 +32,7 @@ type downloadEntry struct {
 	path        string
 	patientName string
 	ownerName   string
+	studyUid    string
 }
 
 type Service struct {
@@ -260,6 +261,7 @@ func (svc *Service) DownloadStudy(ctx context.Context, req *connect.Request[v1.D
 		path:        resourcePath,
 		patientName: patientName,
 		ownerName:   ownerName,
+		studyUid:    req.Msg.StudyUid,
 	}
 
 	accessUrl, _ := url.Parse(svc.Config.PublicURL)
@@ -288,14 +290,30 @@ func (svc *Service) DownloadHandler(w http.ResponseWriter, r *http.Request) {
 		s = strings.ReplaceAll(s, "ERROR", "")
 		s = strings.ReplaceAll(s, ",", "-")
 		s = strings.ReplaceAll(s, " ", "-")
+		s = strings.ReplaceAll(s, "\n", "")
+
+		for strings.Contains(s, "--") {
+			s = strings.ReplaceAll(s, "--", "-")
+		}
 
 		return s
 	}
 
 	if entry.ownerName != "" || entry.patientName != "" {
-		parts := []string{
-			replace(entry.ownerName),
-			replace(entry.patientName),
+		parts := []string{}
+
+		if on := replace(entry.ownerName); on != "" {
+			parts = append(parts, on)
+		}
+
+		if pn := replace(entry.patientName); pn != "" {
+			parts = append(parts, pn)
+		}
+
+		if len(parts) == 0 {
+			parts = []string{
+				entry.studyUid,
+			}
 		}
 
 		filename = strings.Join(parts, "-") + filepath.Ext(entry.path)
