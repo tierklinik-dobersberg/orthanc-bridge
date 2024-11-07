@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/icza/mjpeg"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/orthanc"
@@ -17,13 +18,13 @@ func render(ctx context.Context, cli *orthanc.Client, instance orthanc.FindInsta
 		return cli.GetRenderedInstance(ctx, instance.ID, 0, kind)
 	}
 
-	numberOfFrames, ok := instance.MainDicomTags["NumberOfFrames"]
+	numberOfFrames, ok := instance.MainDicomTags["NumberOfFrames"].(string)
 	if !ok {
 		return nil, ErrNotApplicable
 	}
 
-	conv, ok := numberOfFrames.(float64)
-	if !ok {
+	conv, err := strconv.Atoi(numberOfFrames)
+	if err != nil {
 		return nil, fmt.Errorf("invalid value for NumberOfFrames: %v (%T)", numberOfFrames, numberOfFrames)
 	}
 
