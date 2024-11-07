@@ -3,6 +3,7 @@ package export
 import (
 	"archive/zip"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -18,6 +19,8 @@ func CreateStudyArchive(ctx context.Context, client *orthanc.Client, studyUid st
 
 	// Gather all instance IDS that we want to download.
 	filtered := make(map[string]string, len(instances))
+	instanceMap := make(map[string]orthanc.FindInstancesResponse)
+
 	for _, instance := range instances {
 		sopInstanceUid, ok := instance.MainDicomTags["SOPInstanceUID"].(string)
 		if !ok {
@@ -28,6 +31,7 @@ func CreateStudyArchive(ctx context.Context, client *orthanc.Client, studyUid st
 		if len(filterUids) == 0 || slices.Contains(filterUids, sopInstanceUid) {
 			l.Info("marking DICOM instance for download", "sopInstanceUid", sopInstanceUid, "id", instance.ID)
 			filtered[instance.ID] = sopInstanceUid
+			instanceMap[instance.ID] = instance
 		}
 	}
 
@@ -51,9 +55,21 @@ func CreateStudyArchive(ctx context.Context, client *orthanc.Client, studyUid st
 		slog.Info("downloading DICOM instance", "id", id)
 
 		for _, kind := range renderKinds {
-			blob, err := client.GetRenderedInstance(ctx, id, kind)
+			instance := instanceMap[id]
+
+			if _, ok := instance.MainDicomTags["NumberOfFrames"]; ok && slices.Contains(renderKinds, orthanc.KindAVI) && kind != orthanc.KindAVI {
+				// skip it since we are going to create a MJPEG file for this instance anyway
+				continue
+			}
+
+			blob, err := render(ctx, client, instance, kind)
 			if err != nil {
-				return "", fmt.Errorf("failed to download instance %s (%s): %w", id, sopInstanceUID, err)
+				// not applicable to render
+				if errors.Is(err, ErrNotApplicable) {
+					continue
+				}
+
+				return "", fmt.Errorf("failed to download and render instance %s (%s): %w", id, sopInstanceUID, err)
 			}
 
 			ext, err := getExtension(kind)

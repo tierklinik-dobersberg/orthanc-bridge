@@ -37,7 +37,7 @@ func ExportSingle(ctx context.Context, studyUid string, instanceUid string, inst
 		return "", err
 	}
 
-	blob, err := client.GetRenderedInstance(ctx, instance.ID, kind)
+	blob, err := render(ctx, client, *instance, kind)
 	if err != nil {
 		return "", err
 	}
@@ -65,6 +65,8 @@ func getExtension(kind orthanc.RenderKind) (string, error) {
 		return ".jpg", nil
 	case orthanc.KindPNG:
 		return ".png", nil
+	case orthanc.KindAVI:
+		return ".avi", nil
 
 	default:
 		return "", fmt.Errorf("unsupported render kind")

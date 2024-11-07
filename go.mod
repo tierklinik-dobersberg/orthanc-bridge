@@ -23,6 +23,7 @@ require (
 	github.com/golang/gddo v0.0.0-20210115222349-20d68f94ee1f // indirect
 	github.com/google/cel-go v0.21.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
+	github.com/icza/mjpeg v0.0.0-20230330134156-38318e5ab8f4 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/mitchellh/go-server-timing v1.0.1 // indirect
 	github.com/rs/cors v1.11.1 // indirect

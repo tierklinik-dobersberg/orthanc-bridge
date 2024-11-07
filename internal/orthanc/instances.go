@@ -4,16 +4,18 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/ucarion/urlpath"
 )
 
 var (
-	instanceList       = urlpath.New("/instances")
-	getInstance        = urlpath.New("/instances/:id")
-	getInstanceDicom   = urlpath.New("/instances/:id/file")
-	getInstancePreview = urlpath.New("/instances/:id/preview")
-	getInstanceTags    = urlpath.New("/instances/:id/simplified-tags")
+	instanceList            = urlpath.New("/instances")
+	getInstance             = urlpath.New("/instances/:id")
+	getInstanceDicom        = urlpath.New("/instances/:id/file")
+	getInstancePreview      = urlpath.New("/instances/:id/preview")
+	getInstanceFramePreview = urlpath.New("/instances/:id/frames/:frame/preview")
+	getInstanceTags         = urlpath.New("/instances/:id/simplified-tags")
 )
 
 type (
@@ -82,9 +84,10 @@ const (
 	KindDICOM = RenderKind(iota)
 	KindPNG
 	KindJPEG
+	KindAVI
 )
 
-func (c *Client) GetRenderedInstance(ctx context.Context, instanceId string, accept RenderKind) ([]byte, error) {
+func (c *Client) GetRenderedInstance(ctx context.Context, instanceId string, frame int, accept RenderKind) ([]byte, error) {
 	var (
 		p            urlpath.Path
 		acceptHeader string
@@ -93,12 +96,21 @@ func (c *Client) GetRenderedInstance(ctx context.Context, instanceId string, acc
 	switch accept {
 	case KindDICOM:
 		p = getInstanceDicom
+
 	case KindPNG:
-		p = getInstancePreview
 		acceptHeader = "image/png"
+		fallthrough
+
 	case KindJPEG:
-		p = getInstancePreview
-		acceptHeader = "image/jpeg"
+		if acceptHeader == "" {
+			acceptHeader = "image/jpeg"
+		}
+
+		if frame != 0 {
+			p = getInstanceFramePreview
+		} else {
+			p = getInstancePreview
+		}
 
 	default:
 		return nil, fmt.Errorf("invalid download type")
@@ -110,7 +122,8 @@ func (c *Client) GetRenderedInstance(ctx context.Context, instanceId string, acc
 		http.MethodGet,
 		p,
 		map[string]string{
-			"id": instanceId,
+			"id":    instanceId,
+			"frame": strconv.Itoa(frame),
 		},
 		nil,
 		nil,
