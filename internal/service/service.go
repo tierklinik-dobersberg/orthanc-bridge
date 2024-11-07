@@ -329,7 +329,7 @@ func (svc *Service) DownloadHandler(w http.ResponseWriter, r *http.Request) {
 			s = strings.ReplaceAll(s, "--", "-")
 		}
 
-		return s
+		return strings.TrimSpace(s)
 	}
 
 	if entry.ownerName != "" || entry.patientName != "" {
