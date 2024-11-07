@@ -243,15 +243,48 @@ func (svc *Service) DownloadStudy(ctx context.Context, req *connect.Request[v1.D
 
 	slog.Info("got instances for study", "studyUid", req.Msg.StudyUid, "count", len(instances))
 
+	renderKinds := make([]orthanc.RenderKind, len(req.Msg.Types))
+	for idx, t := range req.Msg.Types {
+		var v orthanc.RenderKind
+
+		switch t {
+		case v1.DownloadType_DICOM:
+			v = orthanc.KindDICOM
+
+		case v1.DownloadType_JPEG:
+			v = orthanc.KindJPEG
+
+		case v1.DownloadType_PNG:
+			v = orthanc.KindPNG
+
+		default:
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("unsupported or unspecified render kind: %q", t))
+		}
+
+		renderKinds[idx] = v
+	}
+
+	// sort and compact
+	slices.SortFunc(renderKinds, func(a, b orthanc.RenderKind) int {
+		return int(b) - int(a)
+	})
+	renderKinds = slices.Compact(renderKinds)
+
+	needsArchive := len(req.Msg.InstanceUids) != 1 || len(renderKinds) != 1
+
 	var resourcePath string
-	if len(req.Msg.InstanceUids) != 1 {
+	if needsArchive {
 		var err error
-		resourcePath, err = export.CreateStudyArchive(ctx, svc.OrthancClient, req.Msg.StudyUid, instances, req.Msg.InstanceUids, []orthanc.RenderKind{orthanc.KindPNG})
+		resourcePath, err = export.CreateStudyArchive(ctx, svc.OrthancClient, req.Msg.StudyUid, instances, req.Msg.InstanceUids, renderKinds)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		return nil, connect.NewError(connect.CodeUnimplemented, fmt.Errorf("retrieving a single instance is not yet supported"))
+		var err error
+		resourcePath, err = export.ExportSingle(ctx, req.Msg.StudyUid, req.Msg.InstanceUids[0], instances, svc.OrthancClient, renderKinds[0])
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	svc.rw.Lock()

@@ -56,17 +56,9 @@ func CreateStudyArchive(ctx context.Context, client *orthanc.Client, studyUid st
 				return "", fmt.Errorf("failed to download instance %s (%s): %w", id, sopInstanceUID, err)
 			}
 
-			var ext string
-			switch kind {
-			case orthanc.KindDICOM:
-				ext = ".dcm"
-			case orthanc.KindJPEG:
-				ext = ".jpg"
-			case orthanc.KindPNG:
-				ext = ".png"
-
-			default:
-				return "", fmt.Errorf("invalid render type %d", kind)
+			ext, err := getExtension(kind)
+			if err != nil {
+				return "", err
 			}
 
 			dest := filepath.Join(dir, sopInstanceUID+ext)
