@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -230,6 +231,10 @@ func (reg *Registry) storeArtifact(ctx context.Context, path string, ttl time.Du
 	for idx, i := range res.instances {
 		filterUids[idx], _ = i.MainDicomTags["SOPInstanceUID"].(string)
 		_, _ = hasher.Write(([]byte)(filterUids[idx]))
+	}
+
+	for _, kind := range kinds {
+		_, _ = hasher.Write(([]byte)(strconv.Itoa(int(kind))))
 	}
 
 	// Construct the artifact file name
