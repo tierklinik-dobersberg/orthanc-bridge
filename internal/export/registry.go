@@ -2,7 +2,10 @@ package export
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/tierklinik-dobersberg/apis/pkg/auth"
@@ -13,19 +16,71 @@ import (
 
 type Storage interface {
 	AddArtifact(context.Context, repo.Artifact) error
+	FindCleanupCandidates(context.Context, time.Time) ([]repo.Artifact, error)
+	DeleteArtifacts(context.Context, []string) error
 }
 
 type Registry struct {
 	repo Storage
 
 	cli *orthanc.Client
+
+	wg sync.WaitGroup
 }
 
-func NewRegistry(cli *orthanc.Client, repo Storage) *Registry {
-	return &Registry{
+func NewRegistry(ctx context.Context, cli *orthanc.Client, repo Storage) *Registry {
+	reg := &Registry{
 		repo: repo,
 		cli:  cli,
 	}
+
+	reg.start(ctx)
+
+	return reg
+}
+
+func (reg *Registry) start(ctx context.Context) {
+	reg.wg.Add(1)
+	go func() {
+		defer reg.wg.Done()
+
+		ticker := time.NewTicker(time.Minute * 10)
+
+		for {
+			candidates, err := reg.repo.FindCleanupCandidates(ctx, time.Now())
+			if err == nil {
+				ids := make([]string, 0, len(candidates))
+
+				// remove the actual artifacts from the disk
+				for _, c := range candidates {
+					err := os.Remove(c.Filepath)
+					if err == nil || errors.Is(err, os.ErrNotExist) {
+						ids = append(ids, c.ID)
+					} else {
+						slog.Error("failed to delete artifact", "id", c.ID, "error", err, "path", c.Filepath)
+					}
+				}
+
+				// finally, remove the artifact entries from the repo
+				if err := reg.repo.DeleteArtifacts(ctx, ids); err != nil {
+					slog.Error("failed to remove artifacts from repository", "error", err)
+				}
+			} else {
+				slog.Error("failed to find artifact cleanup candidates", "error", err)
+			}
+
+			select {
+			case <-ctx.Done():
+				return
+
+			case <-ticker.C:
+			}
+		}
+	}()
+}
+
+func (reg *Registry) Wait() {
+	reg.wg.Wait()
 }
 
 func (reg *Registry) ExportStudy(ctx context.Context, ttl time.Duration, studyUid string, instances []orthanc.FindInstancesResponse, filterUids []string, renderKinds []orthanc.RenderKind) (repo.Artifact, error) {
