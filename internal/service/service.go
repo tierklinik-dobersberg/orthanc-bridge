@@ -53,8 +53,6 @@ func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[v1.Lis
 		},
 	}
 
-	m := req.Msg
-
 	// Apply paggination when set.
 	if pg := m.GetPagination(); pg != nil && pg.PageSize > 0 {
 		qidoReq.Limit = int(pg.PageSize)
@@ -233,8 +231,13 @@ func (svc *Service) DownloadStudy(ctx context.Context, req *connect.Request[v1.D
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("no valid render kinds specified"))
 	}
 
+	ttl := time.Minute * 30
+	if req.Msg.TimeToLive != nil {
+		ttl = req.Msg.TimeToLive.AsDuration()
+	}
+
 	archive, err := svc.Artifacts.Export(ctx, export.ExportOptions{
-		TTL:          time.Minute * 30,
+		TTL:          ttl,
 		StudyUID:     req.Msg.StudyUid,
 		InstanceUIDs: req.Msg.InstanceUids,
 		Kinds:        renderKinds,
@@ -248,5 +251,6 @@ func (svc *Service) DownloadStudy(ctx context.Context, req *connect.Request[v1.D
 
 	return connect.NewResponse(&v1.DownloadStudyResponse{
 		DownloadLink: accessUrl.String(),
+		ExpireTime:   timestamppb.New(archive.ExpiresAt),
 	}), nil
 }
