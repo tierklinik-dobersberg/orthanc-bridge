@@ -10,35 +10,10 @@ import (
 	"path/filepath"
 	"slices"
 
-	"github.com/bufbuild/connect-go"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/orthanc"
 )
 
-func CreateStudyArchive(ctx context.Context, client *orthanc.Client, studyUid string, instances []orthanc.FindInstancesResponse, filterUids []string, renderKinds []orthanc.RenderKind) (string, error) {
-	l := slog.With("studyUid", studyUid)
-
-	// Gather all instance IDS that we want to download.
-	filtered := make(map[string]string, len(instances))
-	instanceMap := make(map[string]orthanc.FindInstancesResponse)
-
-	for _, instance := range instances {
-		sopInstanceUid, ok := instance.MainDicomTags["SOPInstanceUID"].(string)
-		if !ok {
-			l.Error("invalid orthanc response, SOPInstanceUID is expected to be a string")
-			continue
-		}
-
-		if len(filterUids) == 0 || slices.Contains(filterUids, sopInstanceUid) {
-			l.Info("marking DICOM instance for download", "sopInstanceUid", sopInstanceUid, "id", instance.ID)
-			filtered[instance.ID] = sopInstanceUid
-			instanceMap[instance.ID] = instance
-		}
-	}
-
-	// ensure there are actual instances to download
-	if len(filtered) == 0 {
-		return "", connect.NewError(connect.CodeNotFound, fmt.Errorf("no instances to download"))
-	}
+func createStudyArchive(ctx context.Context, client *orthanc.Client, studyUid string, instances []orthanc.FindInstancesResponse, renderKinds []orthanc.RenderKind) (string, error) {
 
 	// create a temporary directory and download all files into it
 	dir, err := os.MkdirTemp("", "archive-"+studyUid+"-raw-")
@@ -51,11 +26,10 @@ func CreateStudyArchive(ctx context.Context, client *orthanc.Client, studyUid st
 	// download each instance to the temporary directory
 	// TODO(ppacher): instead of reading the images to RAM and then writting
 	// 				  to the file consider streaming the response directly to the FS
-	for id, sopInstanceUID := range filtered {
-		slog.Info("downloading DICOM instance", "id", id)
+	for _, instance := range instances {
+		slog.Info("downloading DICOM instance", "id", instance.ID)
 
 		for _, kind := range renderKinds {
-			instance := instanceMap[id]
 
 			// skip JPEG and PNG images if we are going to create a AVI for multi-frame images
 			if _, ok := instance.MainDicomTags["NumberOfFrames"]; ok && slices.Contains(renderKinds, orthanc.KindAVI) && (kind == orthanc.KindJPEG || kind == orthanc.KindPNG) {
@@ -70,7 +44,7 @@ func CreateStudyArchive(ctx context.Context, client *orthanc.Client, studyUid st
 					continue
 				}
 
-				return "", fmt.Errorf("failed to download and render instance %s (%s): %w", id, sopInstanceUID, err)
+				return "", fmt.Errorf("failed to download and render instance %s: %w", instance.ID, err)
 			}
 
 			ext, err := getExtension(kind)
@@ -78,12 +52,12 @@ func CreateStudyArchive(ctx context.Context, client *orthanc.Client, studyUid st
 				return "", err
 			}
 
-			dest := filepath.Join(dir, sopInstanceUID+ext)
+			dest := filepath.Join(dir, instance.ID+ext)
 			if err := os.WriteFile(dest, blob, 0o600); err != nil {
 				return "", fmt.Errorf("failed to write instance image/file to dist: %w", err)
 			}
 
-			slog.Info("succesfully downloaded instance file", "name", dest, "id", id, "sopInstanceUID", sopInstanceUID, "size", len(blob))
+			slog.Info("succesfully downloaded instance file", "name", dest, "id", instance.ID, "size", len(blob))
 		}
 	}
 

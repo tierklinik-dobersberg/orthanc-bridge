@@ -9,6 +9,7 @@ import (
 type Artifact struct {
 	ID           string               `bson:"artifactId"`
 	Filepath     string               `bson:"filepath"`
+	DownloadName string               `bson:"downloadName"`
 	CreatedAt    time.Time            `bson:"createdAt"`
 	ExpiresAt    time.Time            `bson:"expiresAt"`
 	Creator      string               `bson:"creator"`

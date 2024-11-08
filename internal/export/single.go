@@ -5,39 +5,20 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 
-	"github.com/bufbuild/connect-go"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/orthanc"
 )
 
-func ExportSingle(ctx context.Context, studyUid string, instanceUid string, instances []orthanc.FindInstancesResponse, client *orthanc.Client, kind orthanc.RenderKind) (string, error) {
-	var instance *orthanc.FindInstancesResponse
-
-	for _, i := range instances {
-		sopInstanceUid, ok := i.MainDicomTags["SOPInstanceUID"].(string)
-		if !ok {
-			slog.Error("invalid orthanc response, SOPInstanceUID is expected to be a string")
-			continue
-		}
-
-		if sopInstanceUid == instanceUid {
-			instance = &i
-			break
-		}
-	}
-
-	if instance == nil {
-		return "", connect.NewError(connect.CodeNotFound, fmt.Errorf("instance not found"))
-	}
+func exportSingle(ctx context.Context, studyUid string, instances []orthanc.FindInstancesResponse, client *orthanc.Client, kind orthanc.RenderKind) (string, error) {
+	instance := instances[0]
 
 	ext, err := getExtension(kind)
 	if err != nil {
 		return "", err
 	}
 
-	blob, err := render(ctx, client, *instance, kind)
+	blob, err := render(ctx, client, instance, kind)
 	if err != nil {
 		return "", err
 	}

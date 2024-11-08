@@ -9,7 +9,9 @@ import (
 
 	"github.com/tierklinik-dobersberg/apis/gen/go/tkd/idm/v1/idmv1connect"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/dicomweb"
+	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/export"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/orthanc"
+	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/repo"
 )
 
 type Providers struct {
@@ -18,6 +20,8 @@ type Providers struct {
 
 	DICOMWebClient *dicomweb.Client
 	OrthancClient  *orthanc.Client
+
+	Artifacts *export.Registry
 
 	Config Config
 }
@@ -55,12 +59,18 @@ func NewProviders(ctx context.Context, cfg Config) (*Providers, error) {
 		return nil, fmt.Errorf("failed to create orthanc client: %w", err)
 	}
 
+	storage, err := repo.New(ctx, cfg.Mongo.URL, cfg.Mongo.Database)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create repository: %w", err)
+	}
+
 	p := &Providers{
 		Users:          idmv1connect.NewUserServiceClient(httpClient, cfg.IdmURL),
 		Roles:          idmv1connect.NewRoleServiceClient(httpClient, cfg.IdmURL),
 		DICOMWebClient: webClient,
 		OrthancClient:  orthancClient,
 		Config:         cfg,
+		Artifacts:      export.NewRegistry(ctx, orthancClient, storage),
 	}
 
 	return p, nil

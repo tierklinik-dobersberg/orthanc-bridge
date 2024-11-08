@@ -5,14 +5,10 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net/http"
 	"net/url"
 	"path"
-	"path/filepath"
 	"slices"
 	"sort"
-	"strings"
-	"sync"
 	"time"
 
 	connect "github.com/bufbuild/connect-go"
@@ -23,31 +19,18 @@ import (
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/dicomweb"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/export"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/orthanc"
-	"golang.org/x/exp/rand"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
-
-type downloadEntry struct {
-	created     time.Time
-	path        string
-	patientName string
-	ownerName   string
-	studyUid    string
-}
 
 type Service struct {
 	orthanc_bridgev1connect.UnimplementedOrthancBridgeHandler
 
 	*config.Providers
-
-	rw        sync.RWMutex
-	downloads map[string]downloadEntry
 }
 
 func New(p *config.Providers) *Service {
 	return &Service{
 		Providers: p,
-		downloads: make(map[string]downloadEntry),
 	}
 }
 
@@ -216,33 +199,6 @@ func (svc *Service) DownloadStudy(ctx context.Context, req *connect.Request[v1.D
 		return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("no default orthanc instance configured"))
 	}
 
-	// first, read the study metadata
-	studies, err := svc.OrthancClient.FindStudy(ctx, orthanc.ByStudyUID(req.Msg.StudyUid))
-	if err != nil {
-		return nil, fmt.Errorf("failed to find study: %w", err)
-	}
-
-	switch {
-	case len(studies) == 0:
-		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("study with uid %q not found", req.Msg.StudyUid))
-
-	case len(studies) > 1:
-		return nil, connect.NewError(connect.CodeUnknown, fmt.Errorf("to many results"))
-	}
-
-	study := studies[0]
-
-	archiveId := getRandomString(32)
-	patientName, _ := study.PatientMainDicomTags["PatientName"].(string)
-	ownerName, _ := study.PatientMainDicomTags["ResponsiblePerson"].(string)
-
-	instances, err := svc.OrthancClient.FindInstances(ctx, orthanc.ByStudyUID(req.Msg.StudyUid))
-	if err != nil {
-		return nil, fmt.Errorf("failed to contact orthanc API: %w", err)
-	}
-
-	slog.Info("got instances for study", "studyUid", req.Msg.StudyUid, "count", len(instances))
-
 	renderKinds := make([]orthanc.RenderKind, len(req.Msg.Types))
 	for idx, t := range req.Msg.Types {
 		var v orthanc.RenderKind
@@ -273,99 +229,24 @@ func (svc *Service) DownloadStudy(ctx context.Context, req *connect.Request[v1.D
 	})
 	renderKinds = slices.Compact(renderKinds)
 
-	needsArchive := len(req.Msg.InstanceUids) != 1 || len(renderKinds) != 1
-
-	var resourcePath string
-	if needsArchive {
-		var err error
-		resourcePath, err = export.CreateStudyArchive(ctx, svc.OrthancClient, req.Msg.StudyUid, instances, req.Msg.InstanceUids, renderKinds)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		var err error
-		resourcePath, err = export.ExportSingle(ctx, req.Msg.StudyUid, req.Msg.InstanceUids[0], instances, svc.OrthancClient, renderKinds[0])
-		if err != nil {
-			return nil, err
-		}
+	if len(renderKinds) == 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("no valid render kinds specified"))
 	}
 
-	svc.rw.Lock()
-	defer svc.rw.Unlock()
-	svc.downloads[archiveId] = downloadEntry{
-		created:     time.Now(),
-		path:        resourcePath,
-		patientName: patientName,
-		ownerName:   ownerName,
-		studyUid:    req.Msg.StudyUid,
+	archive, err := svc.Artifacts.Export(ctx, export.ExportOptions{
+		TTL:          time.Minute * 30,
+		StudyUID:     req.Msg.StudyUid,
+		InstanceUIDs: req.Msg.InstanceUids,
+		Kinds:        renderKinds,
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	accessUrl, _ := url.Parse(svc.Config.PublicURL)
-	accessUrl.Path = path.Join(accessUrl.Path, "download", archiveId)
+	accessUrl.Path = path.Join(accessUrl.Path, "download", archive.ID)
 
 	return connect.NewResponse(&v1.DownloadStudyResponse{
 		DownloadLink: accessUrl.String(),
 	}), nil
-}
-
-func (svc *Service) DownloadHandler(w http.ResponseWriter, r *http.Request) {
-	archiveId := r.PathValue("id")
-
-	svc.rw.RLock()
-	entry, ok := svc.downloads[archiveId]
-	svc.rw.RUnlock()
-
-	if !ok {
-		http.Error(w, "not found", http.StatusNotFound)
-		return
-	}
-
-	filename := filepath.Base(entry.path)
-
-	replace := func(s string) string {
-		s = strings.ReplaceAll(s, "ERROR", "")
-		s = strings.ReplaceAll(s, ",", "-")
-		s = strings.ReplaceAll(s, " ", "-")
-		s = strings.ReplaceAll(s, "\n", "")
-
-		for strings.Contains(s, "--") {
-			s = strings.ReplaceAll(s, "--", "-")
-		}
-
-		return strings.TrimSpace(s)
-	}
-
-	if entry.ownerName != "" || entry.patientName != "" {
-		parts := []string{}
-
-		if on := replace(entry.ownerName); on != "" {
-			parts = append(parts, on)
-		}
-
-		if pn := replace(entry.patientName); pn != "" {
-			parts = append(parts, pn)
-		}
-
-		if len(parts) == 0 {
-			parts = []string{
-				entry.studyUid,
-			}
-		}
-
-		filename = strings.Join(parts, "-") + filepath.Ext(entry.path)
-	}
-
-	w.Header().Set("Content-Disposition", "attachment; filename=\""+filename+"\"")
-
-	http.ServeFile(w, r, entry.path)
-}
-
-var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-
-func getRandomString(n int) string {
-	b := make([]rune, n)
-	for i := range b {
-		b[i] = letterRunes[rand.Intn(len(letterRunes))]
-	}
-	return string(b)
 }

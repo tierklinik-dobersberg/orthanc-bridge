@@ -30,6 +30,10 @@ type Config struct {
 	PublicURL           string                     `env:"PUBLIC_URL" json:"publicUrl"`
 	Instances           map[string]OrthancInstance `json:"instances"`
 	DefaultInstance     string                     `json:"defaultInstance"`
+	Mongo               struct {
+		URL      string `json:"url"`
+		Database string `json:"database"`
+	} `json:"mongodb"`
 }
 
 func LoadConfig(ctx context.Context, path string) (*Config, error) {
@@ -81,6 +85,10 @@ func LoadConfig(ctx context.Context, path string) (*Config, error) {
 
 	if _, err := url.Parse(cfg.IdmURL); err != nil {
 		return nil, fmt.Errorf("invalid IDM_URL: %w", err)
+	}
+
+	if cfg.Mongo.URL == "" || cfg.Mongo.Database == "" {
+		return nil, fmt.Errorf("invalid mongodb configuration")
 	}
 
 	return &cfg, nil

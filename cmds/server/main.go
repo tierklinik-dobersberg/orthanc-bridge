@@ -95,7 +95,7 @@ func main() {
 	path, handler := orthanc_bridgev1connect.NewOrthancBridgeHandler(svc, interceptors)
 	serveMux.Handle(path, handler)
 
-	serveMux.Handle("/download/{id}", http.HandlerFunc(svc.DownloadHandler))
+	serveMux.Handle("/download/{id}", providers.Artifacts)
 
 	// Create the server
 	srv, err := server.CreateWithOptions(cfg.PublicListenAddress, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
