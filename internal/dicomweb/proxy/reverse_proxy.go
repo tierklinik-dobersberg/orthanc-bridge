@@ -74,7 +74,7 @@ func (shp *SingelHostProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if token := getToken(r); token != "" {
 		req := connect.NewRequest(&idmv1.IntrospectRequest{
 			ReadMask: &fieldmaskpb.FieldMask{
-				Paths: []string{"profile.user.id"},
+				Paths: []string{"user.id", "user.username", "user.display_name"},
 			},
 		})
 
@@ -85,8 +85,11 @@ func (shp *SingelHostProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			slog.Error("failed to determine accessing user", "error", err, "token", token)
 		} else {
 			id := res.Msg.GetProfile().GetUser().GetId()
+			displayName := res.Msg.GetProfile().GetUser().GetDisplayName()
+			username := res.Msg.GetProfile().GetUser().GetUsername()
+
 			if id != "" {
-				slog.Info("accessing user", "id", id)
+				slog.Info("accessing user", "id", id, "username", username, "displayName", displayName)
 			}
 		}
 	}
