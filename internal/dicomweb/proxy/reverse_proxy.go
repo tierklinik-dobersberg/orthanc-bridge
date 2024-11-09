@@ -12,6 +12,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/bufbuild/connect-go"
 	"github.com/sirupsen/logrus"
@@ -74,7 +75,7 @@ func (shp *SingelHostProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if token := getToken(r); token != "" {
 		req := connect.NewRequest(&idmv1.IntrospectRequest{
 			ReadMask: &fieldmaskpb.FieldMask{
-				Paths: []string{"user.id", "user.username", "user.display_name"},
+				Paths: []string{"user.id", "user.username", "user.display_name", "valid_time"},
 			},
 		})
 
@@ -87,9 +88,10 @@ func (shp *SingelHostProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			id := res.Msg.GetProfile().GetUser().GetId()
 			displayName := res.Msg.GetProfile().GetUser().GetDisplayName()
 			username := res.Msg.GetProfile().GetUser().GetUsername()
+			validTime := res.Msg.ValidTime.AsTime()
 
 			if id != "" {
-				slog.Info("accessing user", "id", id, "username", username, "displayName", displayName)
+				slog.Info("accessing user", "id", id, "username", username, "displayName", displayName, "validUntil", validTime.Format(time.RFC3339))
 			}
 		}
 	}

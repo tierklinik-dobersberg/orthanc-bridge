@@ -12,7 +12,7 @@ require (
 	github.com/sethvargo/go-envconfig v0.9.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.8.1
-	github.com/tierklinik-dobersberg/apis v0.18.0
+	github.com/tierklinik-dobersberg/apis v0.19.0
 	github.com/ucarion/urlpath v0.0.0-20200424170820-7ccc79b76bbb
 	go.mongodb.org/mongo-driver v1.17.1
 	golang.org/x/exp v0.0.0-20241009180824-f66d83c29e7c
