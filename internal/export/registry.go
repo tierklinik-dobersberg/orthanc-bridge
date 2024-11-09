@@ -28,6 +28,7 @@ type Storage interface {
 	FindArtifact(context.Context, string) (*repo.Artifact, error)
 	FindCleanupCandidates(context.Context, time.Time) ([]repo.Artifact, error)
 	DeleteArtifacts(context.Context, []string) error
+	FindByHashAndUpdateExpiry(ctx context.Context, hash string, expiry time.Time) (*repo.Artifact, error)
 }
 
 type Registry struct {
@@ -132,7 +133,16 @@ type studyAndInstances struct {
 }
 
 func (reg *Registry) Export(ctx context.Context, options ExportOptions) (repo.Artifact, error) {
-	// TODO(ppacher): calculate hash and check if the artifact already exists, if, just update the TTL
+	hash := getHash(options.StudyUID, options.InstanceUIDs, options.Kinds)
+	existing, err := reg.repo.FindByHashAndUpdateExpiry(ctx, hash, time.Now().Add(options.TTL))
+	if err == nil {
+		return *existing, nil
+	}
+
+	if err != nil && !errors.Is(err, repo.ErrNotFound) {
+		slog.Error("failed to check for existing artifacts", "error", err)
+		// still continue to generate the artifact
+	}
 
 	res, err := reg.fetchStudyAndInstances(ctx, options.StudyUID, options.InstanceUIDs)
 	if err != nil {
@@ -145,10 +155,10 @@ func (reg *Registry) Export(ctx context.Context, options ExportOptions) (repo.Ar
 
 	needsArchive := len(options.InstanceUIDs) != 1 || len(options.Kinds) != 1
 	if needsArchive {
-		return reg.exportArchive(ctx, options.TTL, res, options.Kinds)
+		return reg.exportArchive(ctx, options.TTL, res, options.Kinds, hash)
 	}
 
-	return reg.exportSingle(ctx, options.TTL, res, options.Kinds[0])
+	return reg.exportSingle(ctx, options.TTL, res, options.Kinds[0], hash)
 }
 
 func (reg *Registry) fetchStudyAndInstances(ctx context.Context, studyUid string, filterInstanceUids []string) (*studyAndInstances, error) {
@@ -204,42 +214,34 @@ func (reg *Registry) fetchStudyAndInstances(ctx context.Context, studyUid string
 	}, nil
 }
 
-func (reg *Registry) exportArchive(ctx context.Context, ttl time.Duration, res *studyAndInstances, renderKinds []orthanc.RenderKind) (repo.Artifact, error) {
+func (reg *Registry) exportArchive(ctx context.Context, ttl time.Duration, res *studyAndInstances, renderKinds []orthanc.RenderKind, hash string) (repo.Artifact, error) {
 	path, err := createStudyArchive(ctx, reg.cli, res.studyUID, res.instances, renderKinds)
 	if err != nil {
 		return repo.Artifact{}, err
 	}
 
-	return reg.storeArtifact(ctx, path, ttl, res, renderKinds)
+	return reg.storeArtifact(ctx, path, ttl, res, renderKinds, hash)
 }
 
-func (reg *Registry) exportSingle(ctx context.Context, ttl time.Duration, res *studyAndInstances, kind orthanc.RenderKind) (repo.Artifact, error) {
+func (reg *Registry) exportSingle(ctx context.Context, ttl time.Duration, res *studyAndInstances, kind orthanc.RenderKind, hash string) (repo.Artifact, error) {
 	path, err := exportSingle(ctx, res.studyUID, res.instances, reg.cli, kind)
 	if err != nil {
 		return repo.Artifact{}, err
 	}
 
-	return reg.storeArtifact(ctx, path, ttl, res, []orthanc.RenderKind{kind})
+	return reg.storeArtifact(ctx, path, ttl, res, []orthanc.RenderKind{kind}, hash)
 }
 
-func (reg *Registry) storeArtifact(ctx context.Context, path string, ttl time.Duration, res *studyAndInstances, kinds []orthanc.RenderKind) (repo.Artifact, error) {
+func (reg *Registry) storeArtifact(ctx context.Context, path string, ttl time.Duration, res *studyAndInstances, kinds []orthanc.RenderKind, hash string) (repo.Artifact, error) {
 	creator := ""
 
 	if user := auth.From(ctx); user != nil {
 		creator = user.ID
 	}
 
-	hasher := sha1.New()
-	_, _ = hasher.Write(([]byte)(res.studyUID))
-
 	filterUids := make([]string, len(res.instances))
 	for idx, i := range res.instances {
 		filterUids[idx], _ = i.MainDicomTags["SOPInstanceUID"].(string)
-		_, _ = hasher.Write(([]byte)(filterUids[idx]))
-	}
-
-	for _, kind := range kinds {
-		_, _ = hasher.Write(([]byte)(strconv.Itoa(int(kind))))
 	}
 
 	// Construct the artifact file name
@@ -287,7 +289,7 @@ func (reg *Registry) storeArtifact(ctx context.Context, path string, ttl time.Du
 		StudyUID:     res.studyUID,
 		InstanceUIDs: filterUids,
 		RenderTypes:  kinds,
-		Hash:         hex.EncodeToString(hasher.Sum(nil)),
+		Hash:         hash,
 	}
 
 	if err := reg.repo.AddArtifact(ctx, artifact); err != nil {
@@ -307,4 +309,22 @@ func getRandomString(n int) string {
 		b[i] = letterRunes[rand.Intn(len(letterRunes))]
 	}
 	return string(b)
+}
+
+func getHash(studyUid string, instanceUids []string, kinds []orthanc.RenderKind) string {
+	hasher := sha1.New()
+
+	_, _ = hasher.Write([]byte(studyUid))
+
+	slices.Sort(instanceUids)
+	for _, uid := range instanceUids {
+		_, _ = hasher.Write([]byte(uid))
+	}
+
+	slices.Sort(kinds)
+	for _, k := range kinds {
+		_, _ = hasher.Write([]byte(strconv.Itoa(int(k))))
+	}
+
+	return hex.EncodeToString(hasher.Sum(nil))
 }

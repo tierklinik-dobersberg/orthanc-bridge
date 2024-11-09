@@ -52,6 +52,15 @@ func New(ctx context.Context, url string, db string) (*Repo, error) {
 				},
 			},
 		},
+		{
+			Keys: bson.D{
+				{
+					Key:   "hash",
+					Value: 1,
+				},
+			},
+			Options: options.Index().SetUnique(true),
+		},
 	}); err != nil {
 		return nil, err
 	}
@@ -66,6 +75,34 @@ func (r *Repo) AddArtifact(ctx context.Context, artifact Artifact) error {
 	}
 
 	return nil
+}
+
+func (r *Repo) FindByHashAndUpdateExpiry(ctx context.Context, hash string, expiry time.Time) (*Artifact, error) {
+	res := r.artifacts.FindOneAndUpdate(
+		ctx,
+		bson.M{"hash": hash},
+		bson.M{
+			"$set": bson.M{
+				"expiresAt": expiry,
+			},
+		},
+		options.FindOneAndUpdate().SetReturnDocument(options.After),
+	)
+
+	if err := res.Err(); err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, ErrNotFound
+		}
+
+		return nil, err
+	}
+
+	var artifact Artifact
+	if err := res.Decode(&artifact); err != nil {
+		return nil, fmt.Errorf("failed to decode BSON document: %w", err)
+	}
+
+	return &artifact, nil
 }
 
 func (r *Repo) FindArtifact(ctx context.Context, id string) (*Artifact, error) {
