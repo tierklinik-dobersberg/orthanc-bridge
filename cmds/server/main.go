@@ -9,8 +9,10 @@ import (
 	"github.com/bufbuild/connect-go"
 	"github.com/bufbuild/protovalidate-go"
 	"github.com/sirupsen/logrus"
+	"github.com/tierklinik-dobersberg/apis/gen/go/tkd/idm/v1/idmv1connect"
 	"github.com/tierklinik-dobersberg/apis/gen/go/tkd/orthanc_bridge/v1/orthanc_bridgev1connect"
 	"github.com/tierklinik-dobersberg/apis/pkg/auth"
+	"github.com/tierklinik-dobersberg/apis/pkg/cli"
 	"github.com/tierklinik-dobersberg/apis/pkg/cors"
 	"github.com/tierklinik-dobersberg/apis/pkg/log"
 	"github.com/tierklinik-dobersberg/apis/pkg/server"
@@ -77,11 +79,13 @@ func main() {
 		logrus.Fatalf("failed to parse publicURL setting: %s", err)
 	}
 
+	authClient := idmv1connect.NewAuthServiceClient(cli.NewInsecureHttp2Client(), cfg.IdmURL)
+
 	// setup reverse proxy routes for each orthanc instance
 	for name, instance := range cfg.Instances {
 		prefix := "/bridge/" + name + "/"
 
-		proxy, err := proxy.New(name, prefix, publicURL, instance)
+		proxy, err := proxy.New(name, prefix, publicURL, instance, authClient)
 		if err != nil {
 			logger.Fatalf("failed to create dicomweb-proxy for %s: %s", name, err)
 		}

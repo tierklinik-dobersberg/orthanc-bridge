@@ -18,3 +18,20 @@ type Artifact struct {
 	Hash         string               `bson:"hash"`
 	RenderTypes  []orthanc.RenderKind `bson:"renderKinds"`
 }
+
+type StudyShare struct {
+	Token        string    `bson:"token"`
+	CreatedAt    time.Time `bson:"createdAt"`
+	ExpiresAt    time.Time `bson:"expiresAt"`
+	Creator      string    `bson:"creator"`
+	StudyUID     string    `bson:"studyUid"`
+	InstanceUIDs []string  `bson:"instanceUids"`
+}
+
+func (share StudyShare) IsValid() bool {
+	if share.ExpiresAt.IsZero() {
+		return true
+	}
+
+	return time.Now().Before(share.ExpiresAt)
+}

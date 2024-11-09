@@ -6,35 +6,43 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"strings"
 
+	"github.com/bufbuild/connect-go"
 	"github.com/sirupsen/logrus"
+	idmv1 "github.com/tierklinik-dobersberg/apis/gen/go/tkd/idm/v1"
+	"github.com/tierklinik-dobersberg/apis/gen/go/tkd/idm/v1/idmv1connect"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/config"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/dicomweb"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/urlutils"
 	"github.com/ucarion/urlpath"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
 type SingelHostProxy struct {
-	*httputil.ReverseProxy
+	proxy *httputil.ReverseProxy
 
 	Name      string
 	Subdir    string
 	PublicURL *url.URL
 
+	userClient idmv1connect.AuthServiceClient
+
 	config.OrthancInstance
 }
 
-func New(name string, subdir string, publicURL *url.URL, cfg config.OrthancInstance) (*SingelHostProxy, error) {
+func New(name string, subdir string, publicURL *url.URL, cfg config.OrthancInstance, userClient idmv1connect.AuthServiceClient) (*SingelHostProxy, error) {
 	i := &SingelHostProxy{
 		Name:            name,
 		Subdir:          subdir,
 		PublicURL:       publicURL,
 		OrthancInstance: cfg,
+		userClient:      userClient,
 	}
 
 	proxy, err := i.buildProxy()
@@ -42,10 +50,50 @@ func New(name string, subdir string, publicURL *url.URL, cfg config.OrthancInsta
 		return nil, err
 	}
 
-	i.ReverseProxy = proxy
+	i.proxy = proxy
 
 	return i, nil
 }
+
+func getToken(r *http.Request) string {
+	if h := r.Header.Get("Authorization"); strings.HasPrefix(strings.ToLower(h), "bearer ") {
+		return strings.TrimSpace(h[7:])
+	}
+
+	for _, c := range r.Cookies() {
+		// TODO(ppacher): make cookie name configurable
+		if c.Name == "cis_idm_access" {
+			return c.Value
+		}
+	}
+
+	return ""
+}
+
+func (shp *SingelHostProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if token := getToken(r); token != "" {
+		req := connect.NewRequest(&idmv1.IntrospectRequest{
+			ReadMask: &fieldmaskpb.FieldMask{
+				Paths: []string{"profile.user.id"},
+			},
+		})
+
+		req.Header().Set("Authorization", token)
+
+		res, err := shp.userClient.Introspect(r.Context(), req)
+		if err != nil {
+			slog.Error("failed to determine accessing user", "error", err, "token", token)
+		}
+
+		id := res.Msg.GetProfile().GetUser().GetId()
+		if id != "" {
+			slog.Info("accessing user", "id", id)
+		}
+	}
+
+	shp.proxy.ServeHTTP(w, r)
+}
+
 func rewriteRequestURL(req *http.Request, target *url.URL) {
 	targetQuery := target.RawQuery
 	req.URL.Scheme = target.Scheme
