@@ -83,11 +83,11 @@ func (shp *SingelHostProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		res, err := shp.userClient.Introspect(r.Context(), req)
 		if err != nil {
 			slog.Error("failed to determine accessing user", "error", err, "token", token)
-		}
-
-		id := res.Msg.GetProfile().GetUser().GetId()
-		if id != "" {
-			slog.Info("accessing user", "id", id)
+		} else {
+			id := res.Msg.GetProfile().GetUser().GetId()
+			if id != "" {
+				slog.Info("accessing user", "id", id)
+			}
 		}
 	}
 
