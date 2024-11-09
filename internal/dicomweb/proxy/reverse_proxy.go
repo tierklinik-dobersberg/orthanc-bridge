@@ -3,6 +3,7 @@ package proxy
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -23,6 +24,7 @@ import (
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/dicomweb"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/urlutils"
 	"github.com/ucarion/urlpath"
+	"golang.org/x/sync/singleflight"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
@@ -37,6 +39,8 @@ type SingelHostProxy struct {
 
 	config.OrthancInstance
 
+	once *singleflight.Group
+
 	rw          sync.RWMutex
 	validTokens map[string]time.Time
 }
@@ -49,6 +53,7 @@ func New(name string, subdir string, publicURL *url.URL, cfg config.OrthancInsta
 		OrthancInstance: cfg,
 		userClient:      userClient,
 		validTokens:     make(map[string]time.Time),
+		once:            new(singleflight.Group),
 	}
 
 	proxy, err := i.buildProxy()
@@ -74,6 +79,32 @@ func getToken(r *http.Request) string {
 	}
 
 	return ""
+}
+
+func (shp *SingelHostProxy) validateToken(ctx context.Context, token string) bool {
+	res, _, _ := shp.once.Do(token, func() (interface{}, error) {
+		req := connect.NewRequest(&idmv1.IntrospectRequest{
+			ReadMask: &fieldmaskpb.FieldMask{
+				Paths: []string{"user.id", "user.username", "user.display_name", "valid_time"},
+			},
+		})
+
+		req.Header().Set("Authorization", "Bearer "+token)
+
+		slog.Info("querying IDM for token validity", "token-prefix", token[:8]+"****")
+		res, err := shp.userClient.Introspect(ctx, req)
+		if err == nil {
+			if res.Msg.ValidTime.IsValid() {
+				shp.cacheToken(token, res.Msg.ValidTime.AsTime())
+			}
+
+			return true, nil
+		}
+
+		return false, nil
+	})
+
+	return res.(bool)
 }
 
 func (shp *SingelHostProxy) isValidToken(token string) bool {
@@ -115,23 +146,7 @@ func (shp *SingelHostProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if shp.isValidToken(token) {
 			allowed = true
 		} else {
-			req := connect.NewRequest(&idmv1.IntrospectRequest{
-				ReadMask: &fieldmaskpb.FieldMask{
-					Paths: []string{"user.id", "user.username", "user.display_name", "valid_time"},
-				},
-			})
-
-			req.Header().Set("Authorization", "Bearer "+token)
-
-			slog.Info("querying IDM for token validity", "token-prefix", token[:8]+"****")
-			res, err := shp.userClient.Introspect(r.Context(), req)
-			if err == nil {
-				allowed = true
-
-				if res.Msg.ValidTime.IsValid() {
-					shp.cacheToken(token, res.Msg.ValidTime.AsTime())
-				}
-			}
+			allowed = shp.validateToken(context.Background(), token)
 		}
 	}
 
