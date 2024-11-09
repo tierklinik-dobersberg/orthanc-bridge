@@ -6,12 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
 	"mime"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bufbuild/connect-go"
@@ -35,6 +35,9 @@ type SingelHostProxy struct {
 	userClient idmv1connect.AuthServiceClient
 
 	config.OrthancInstance
+
+	rw          sync.RWMutex
+	validTokens map[string]time.Time
 }
 
 func New(name string, subdir string, publicURL *url.URL, cfg config.OrthancInstance, userClient idmv1connect.AuthServiceClient) (*SingelHostProxy, error) {
@@ -44,6 +47,7 @@ func New(name string, subdir string, publicURL *url.URL, cfg config.OrthancInsta
 		PublicURL:       publicURL,
 		OrthancInstance: cfg,
 		userClient:      userClient,
+		validTokens:     make(map[string]time.Time),
 	}
 
 	proxy, err := i.buildProxy()
@@ -71,29 +75,68 @@ func getToken(r *http.Request) string {
 	return ""
 }
 
+func (shp *SingelHostProxy) isValidToken(token string) bool {
+	shp.rw.RLock()
+	defer shp.rw.RUnlock()
+
+	t, ok := shp.validTokens[token]
+	if !ok {
+		return false
+	}
+
+	valid := time.Now().Before(t)
+
+	if !valid {
+		go func() {
+			shp.rw.Lock()
+			defer shp.rw.Unlock()
+
+			delete(shp.validTokens, token)
+		}()
+	}
+
+	return valid
+}
+
+func (shp *SingelHostProxy) cacheToken(token string, validUntil time.Time) {
+	shp.rw.Lock()
+	defer shp.rw.Unlock()
+
+	shp.validTokens[token] = validUntil
+}
+
 func (shp *SingelHostProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	allowed := false
+
 	if token := getToken(r); token != "" {
-		req := connect.NewRequest(&idmv1.IntrospectRequest{
-			ReadMask: &fieldmaskpb.FieldMask{
-				Paths: []string{"user.id", "user.username", "user.display_name", "valid_time"},
-			},
-		})
+		// TODO(ppacher): add support for shared studies
 
-		req.Header().Set("Authorization", "Bearer "+token)
-
-		res, err := shp.userClient.Introspect(r.Context(), req)
-		if err != nil {
-			slog.Error("failed to determine accessing user", "error", err, "token", token)
+		if shp.isValidToken(token) {
+			allowed = true
 		} else {
-			id := res.Msg.GetProfile().GetUser().GetId()
-			displayName := res.Msg.GetProfile().GetUser().GetDisplayName()
-			username := res.Msg.GetProfile().GetUser().GetUsername()
-			validTime := res.Msg.ValidTime.AsTime()
+			req := connect.NewRequest(&idmv1.IntrospectRequest{
+				ReadMask: &fieldmaskpb.FieldMask{
+					Paths: []string{"user.id", "user.username", "user.display_name", "valid_time"},
+				},
+			})
 
-			if id != "" {
-				slog.Info("accessing user", "id", id, "username", username, "displayName", displayName, "validUntil", validTime.Format(time.RFC3339))
+			req.Header().Set("Authorization", "Bearer "+token)
+
+			res, err := shp.userClient.Introspect(r.Context(), req)
+			if err == nil {
+				allowed = true
+
+				if res.Msg.ValidTime.IsValid() {
+					shp.cacheToken(token, res.Msg.ValidTime.AsTime())
+				}
 			}
 		}
+
+	}
+
+	if !allowed {
+		http.Error(w, "you are not allowed to use the dicom-web interface", http.StatusUnauthorized)
+		return
 	}
 
 	shp.proxy.ServeHTTP(w, r)
