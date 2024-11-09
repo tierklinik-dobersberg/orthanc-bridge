@@ -78,7 +78,7 @@ func (shp *SingelHostProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			},
 		})
 
-		req.Header().Set("Authorization", token)
+		req.Header().Set("Authorization", "Bearer "+token)
 
 		res, err := shp.userClient.Introspect(r.Context(), req)
 		if err != nil {
