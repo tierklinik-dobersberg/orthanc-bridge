@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime"
 	"net/http"
 	"net/http/httputil"
@@ -122,6 +123,7 @@ func (shp *SingelHostProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 			req.Header().Set("Authorization", "Bearer "+token)
 
+			slog.Info("querying IDM for token validity", "token-prefix", token[:8]+"****")
 			res, err := shp.userClient.Introspect(r.Context(), req)
 			if err == nil {
 				allowed = true
@@ -131,7 +133,6 @@ func (shp *SingelHostProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-
 	}
 
 	if !allowed {
