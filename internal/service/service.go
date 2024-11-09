@@ -53,6 +53,8 @@ func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[v1.Lis
 		},
 	}
 
+	m := req.Msg
+
 	// Apply paggination when set.
 	if pg := m.GetPagination(); pg != nil && pg.PageSize > 0 {
 		qidoReq.Limit = int(pg.PageSize)

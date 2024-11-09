@@ -50,6 +50,11 @@ func NewRegistry(ctx context.Context, cli *orthanc.Client, repo Storage) *Regist
 }
 
 func (reg *Registry) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	archiveId := r.PathValue("id")
 
 	archive, err := reg.repo.FindArtifact(r.Context(), archiveId)
