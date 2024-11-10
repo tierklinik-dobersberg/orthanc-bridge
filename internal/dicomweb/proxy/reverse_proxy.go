@@ -31,12 +31,10 @@ import (
 )
 
 var qidoMatcher = []urlpath.Path{
-	urlpath.New("/dicom-web/studies"),
-	urlpath.New("/dicom-web/studies/:study"),
-	urlpath.New("/dicom-web/studies/:study/series"),
-	urlpath.New("/dicom-web/studies/:study/series/:series"),
-	urlpath.New("/dicom-web/studies/:study/series/:series/instances"),
-	urlpath.New("/dicom-web/studies/:study/series/:series/instances/:instance/*"),
+	urlpath.New("dicom-web/studies/:study/series/:series/instances/:instance/*"),
+	urlpath.New("dicom-web/studies/:study/series/:series/*"),
+	urlpath.New("dicom-web/studies/:study/*"),
+	urlpath.New("dicom-web/studies"),
 }
 
 type Storage interface {
