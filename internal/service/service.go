@@ -281,8 +281,14 @@ func (svc *Service) ShareStudy(ctx context.Context, req *connect.Request[v1.Shar
 		return nil, err
 	}
 
+	viewerUrl := fmt.Sprintf("%s/viewer/?StudyInstanceUIDs=%s&token=%s", svc.Config.PublicURL, req.Msg.StudyUid, token)
+
+	if len(share.InstanceUIDs) > 0 {
+		viewerUrl += "&initialSopInstanceUid=" + share.InstanceUIDs[0]
+	}
+
 	return connect.NewResponse(&v1.ShareStudyResponse{
 		Token:     token,
-		ViewerUrl: fmt.Sprintf("%s/viewer/?StudyInstanceUIDs=%s&token=%s", svc.Config.PublicURL, req.Msg.StudyUid, token),
+		ViewerUrl: viewerUrl,
 	}), nil
 }
