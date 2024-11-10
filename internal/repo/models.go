@@ -6,6 +6,8 @@ import (
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/orthanc"
 )
 
+const ShareTokenPrefix = "sh_"
+
 type Artifact struct {
 	ID           string               `bson:"artifactId"`
 	Filepath     string               `bson:"filepath"`
@@ -26,6 +28,7 @@ type StudyShare struct {
 	Creator      string    `bson:"creator"`
 	StudyUID     string    `bson:"studyUid"`
 	InstanceUIDs []string  `bson:"instanceUids"`
+	Recipients   []string  `bson:"recipients"`
 }
 
 func (share StudyShare) IsValid() bool {

@@ -22,11 +22,23 @@ import (
 	"github.com/tierklinik-dobersberg/apis/gen/go/tkd/idm/v1/idmv1connect"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/config"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/dicomweb"
+	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/repo"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/urlutils"
 	"github.com/ucarion/urlpath"
 	"golang.org/x/sync/singleflight"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
+
+var (
+	// TODO(ppacher): make /dicom-web/ root configurable per instance
+	qidoStudyURL    = urlpath.New("/dicom-web/studies")
+	qidoSeriesURL   = urlpath.New("/dicom-web/studies/:study/series")
+	qidoInstanceURL = urlpath.New("/dicom-web/studies/:study/series/:series/instances")
+)
+
+type Storage interface {
+	GetStudyShare(ctx context.Context, token string) (*repo.StudyShare, error)
+}
 
 type SingelHostProxy struct {
 	proxy *httputil.ReverseProxy
@@ -39,13 +51,14 @@ type SingelHostProxy struct {
 
 	config.OrthancInstance
 
-	once *singleflight.Group
+	once  *singleflight.Group
+	store Storage
 
 	rw          sync.RWMutex
 	validTokens map[string]time.Time
 }
 
-func New(name string, subdir string, publicURL *url.URL, cfg config.OrthancInstance, userClient idmv1connect.AuthServiceClient) (*SingelHostProxy, error) {
+func New(name string, storage Storage, subdir string, publicURL *url.URL, cfg config.OrthancInstance, userClient idmv1connect.AuthServiceClient) (*SingelHostProxy, error) {
 	i := &SingelHostProxy{
 		Name:            name,
 		Subdir:          subdir,
@@ -54,6 +67,7 @@ func New(name string, subdir string, publicURL *url.URL, cfg config.OrthancInsta
 		userClient:      userClient,
 		validTokens:     make(map[string]time.Time),
 		once:            new(singleflight.Group),
+		store:           storage,
 	}
 
 	proxy, err := i.buildProxy()
@@ -81,7 +95,27 @@ func getToken(r *http.Request) string {
 	return ""
 }
 
-func (shp *SingelHostProxy) validateToken(ctx context.Context, token string) bool {
+func (shp *SingelHostProxy) validateToken(ctx context.Context, token string, path string) bool {
+	// check for share tokens
+	if strings.HasPrefix(token, repo.ShareTokenPrefix) {
+		share, err := shp.store.GetStudyShare(ctx, token)
+		if err != nil {
+			slog.Error("failed to fetch study share token", "token", token, "error", err.Error())
+
+			// Better deny the request in an error case
+			return false
+		}
+
+		// ensure the share token is still valid
+		if !share.IsValid() {
+			return false
+		}
+
+		// TODO(ppacher): validate access to the given study/series/instance is actually allowed.
+
+		return true
+	}
+
 	res, _, _ := shp.once.Do(token, func() (interface{}, error) {
 		req := connect.NewRequest(&idmv1.IntrospectRequest{
 			ReadMask: &fieldmaskpb.FieldMask{
@@ -146,7 +180,7 @@ func (shp *SingelHostProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if shp.isValidToken(token) {
 			allowed = true
 		} else {
-			allowed = shp.validateToken(context.Background(), token)
+			allowed = shp.validateToken(context.Background(), token, r.URL.Path)
 		}
 	}
 
@@ -171,13 +205,6 @@ func rewriteRequestURL(req *http.Request, target *url.URL) {
 	}
 }
 
-var (
-	// TODO(ppacher): make /dicom-web/ root configurable per instance
-	qidoStudyURL    = urlpath.New("/dicom-web/studies")
-	qidoSeriesURL   = urlpath.New("/dicom-web/studies/:study/series")
-	qidoInstanceURL = urlpath.New("/dicom-web/studies/:study/series/:series/instances")
-)
-
 func isQidoUrl(path string) bool {
 	if _, match := qidoStudyURL.Match(path); match {
 		return true
@@ -194,6 +221,8 @@ func isQidoUrl(path string) bool {
 	return false
 }
 
+var proxyContextKey = struct{ S string }{S: "proxyContextKey"}
+
 func (p *SingelHostProxy) buildProxy() (*httputil.ReverseProxy, error) {
 	target, err := url.Parse(p.Address)
 	if err != nil {
@@ -201,6 +230,10 @@ func (p *SingelHostProxy) buildProxy() (*httputil.ReverseProxy, error) {
 	}
 
 	director := func(req *http.Request) {
+		req = req.WithContext(
+			context.WithValue(req.Context(), proxyContextKey, "valid"),
+		)
+
 		rewriteRequestURL(req, target)
 
 		if p.Username != "" {
@@ -217,7 +250,7 @@ func (p *SingelHostProxy) buildProxy() (*httputil.ReverseProxy, error) {
 			req.Header.Set("Accept", "image/png")
 		}
 
-		logrus.Infof("forwarding to %s", req.URL.String())
+		slog.Debug("forwarding DICOMWEB request", "target", req.URL.String())
 	}
 
 	return &httputil.ReverseProxy{
@@ -225,8 +258,13 @@ func (p *SingelHostProxy) buildProxy() (*httputil.ReverseProxy, error) {
 		ModifyResponse: func(r *http.Response) error {
 			contentType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 
+			if r.Request != nil {
+				val := r.Request.Context().Value(proxyContextKey)
+				slog.Info("got Request ins ModifyResponse", "value", val)
+			}
+
 			if err != nil {
-				logrus.Errorf("failed to parse media type %q: %s", r.Header.Get("Content-Type"), err)
+				slog.Error("failed to parse mime type", "mimeType", r.Header.Get("Content-type"), "error", err)
 
 				return nil
 			}
@@ -236,7 +274,6 @@ func (p *SingelHostProxy) buildProxy() (*httputil.ReverseProxy, error) {
 				return p.rewriteQidoBody(r)
 
 			default:
-				logrus.Infof("skipping body modification for content-type %s", contentType)
 				// don't do anything here
 			}
 
@@ -289,7 +326,7 @@ func (p *SingelHostProxy) rewriteQidoBody(r *http.Response) error {
 				if str, ok := value.(string); ok {
 					updated, err := p.updateOutgoingURL(str)
 					if err != nil {
-						logrus.Errorf("RetrieveURI: %s", err.Error())
+						slog.Error("failed to update outgoing URLs for tag RetrieveURI", "error", err)
 
 						continue
 					}
@@ -305,7 +342,7 @@ func (p *SingelHostProxy) rewriteQidoBody(r *http.Response) error {
 				if str, ok := value.(string); ok {
 					updated, err := p.updateOutgoingURL(str)
 					if err != nil {
-						logrus.Errorf("RetrieveURL: %s", err.Error())
+						slog.Error("failed to update outgoing URLs for tag RetrieveURL", "error", err)
 
 						continue
 					}

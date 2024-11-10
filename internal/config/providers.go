@@ -21,6 +21,8 @@ type Providers struct {
 	DICOMWebClient *dicomweb.Client
 	OrthancClient  *orthanc.Client
 
+	Repo *repo.Repo
+
 	Artifacts *export.Registry
 
 	Config Config
@@ -71,6 +73,7 @@ func NewProviders(ctx context.Context, cfg Config) (*Providers, error) {
 		OrthancClient:  orthancClient,
 		Config:         cfg,
 		Artifacts:      export.NewRegistry(ctx, orthancClient, storage),
+		Repo:           storage,
 	}
 
 	return p, nil

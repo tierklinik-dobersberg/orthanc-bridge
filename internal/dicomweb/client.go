@@ -147,7 +147,7 @@ func (cli *Client) Query(ctx context.Context, req QIDORequest) ([]QIDOResponse, 
 		endpoint += "?" + e
 	}
 
-	slog.Info("sending QIDO query request", "url", endpoint)
+	slog.Debug("sending QIDO query request", "url", endpoint)
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {

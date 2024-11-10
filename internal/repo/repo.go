@@ -17,6 +17,7 @@ var (
 
 type Repo struct {
 	artifacts *mongo.Collection
+	shares    *mongo.Collection
 }
 
 func New(ctx context.Context, url string, db string) (*Repo, error) {
@@ -31,6 +32,7 @@ func New(ctx context.Context, url string, db string) (*Repo, error) {
 
 	r := &Repo{
 		artifacts: cli.Database(db).Collection("artifacts"),
+		shares:    cli.Database(db).Collection("shares"),
 	}
 
 	// setup indexes
@@ -168,4 +170,22 @@ func (r *Repo) ListArtifacts(ctx context.Context) ([]Artifact, error) {
 	}
 
 	return result, nil
+}
+
+func (r *Repo) GetStudyShare(ctx context.Context, token string) (*StudyShare, error) {
+	res := r.shares.FindOne(ctx, bson.M{"token": token})
+	if err := res.Err(); err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, ErrNotFound
+		}
+
+		return nil, err
+	}
+
+	var share StudyShare
+	if err := res.Decode(&share); err != nil {
+		return nil, fmt.Errorf("failed to decode BSON document: %w", err)
+	}
+
+	return &share, nil
 }

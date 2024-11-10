@@ -85,7 +85,7 @@ func main() {
 	for name, instance := range cfg.Instances {
 		prefix := "/bridge/" + name + "/"
 
-		proxy, err := proxy.New(name, prefix, publicURL, instance, authClient)
+		proxy, err := proxy.New(name, providers.Repo, prefix, publicURL, instance, authClient)
 		if err != nil {
 			logger.Fatalf("failed to create dicomweb-proxy for %s: %s", name, err)
 		}
