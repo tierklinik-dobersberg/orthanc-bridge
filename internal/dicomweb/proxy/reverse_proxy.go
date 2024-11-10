@@ -311,6 +311,8 @@ func (p *SingelHostProxy) rewriteQidoBody(r *http.Response, token resolvedAccess
 				if s, ok := val.Value[0].(string); ok {
 					if token.studShare.StudyUID != s {
 						// Skip this study
+						slog.Info("removing study from response since access it's not allowed by the share token", "studyUid", s)
+
 						continue
 					}
 				}
@@ -318,10 +320,12 @@ func (p *SingelHostProxy) rewriteQidoBody(r *http.Response, token resolvedAccess
 
 			// validate access to the instances
 			if len(token.studShare.InstanceUIDs) > 0 {
-				var instanceUid string
 
+				var instanceUid string
 				val, ok := s[dicomweb.SOPInstanceUID]
 				if ok && len(val.Value) > 0 {
+					slog.Info("checking for instance access", "instance", val.Value)
+
 					instanceUid, ok = val.Value[0].(string)
 				}
 
