@@ -354,6 +354,7 @@ func (p *SingelHostProxy) rewriteQidoBody(r *http.Response, token resolvedAccess
 						instanceCount++
 					}
 				}
+
 			*/
 		}
 
