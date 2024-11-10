@@ -31,8 +31,11 @@ import (
 )
 
 var qidoMatcher = []urlpath.Path{
+	urlpath.New("dicom-web/studies/:study/series/:series/instances/:instance"),
 	urlpath.New("dicom-web/studies/:study/series/:series/instances/:instance/*"),
+	urlpath.New("dicom-web/studies/:study/series/:series"),
 	urlpath.New("dicom-web/studies/:study/series/:series/*"),
+	urlpath.New("dicom-web/studies/:study"),
 	urlpath.New("dicom-web/studies/:study/*"),
 	urlpath.New("dicom-web/studies"),
 }
