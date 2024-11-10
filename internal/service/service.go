@@ -260,7 +260,7 @@ func (svc *Service) DownloadStudy(ctx context.Context, req *connect.Request[v1.D
 }
 
 func (svc *Service) ShareStudy(ctx context.Context, req *connect.Request[v1.ShareStudyRequest]) (*connect.Response[v1.ShareStudyResponse], error) {
-	token := export.GetRandomString(48)
+	token := repo.ShareTokenPrefix + export.GetRandomString(48)
 
 	ttl := time.Hour * 24 * 30
 
@@ -283,6 +283,6 @@ func (svc *Service) ShareStudy(ctx context.Context, req *connect.Request[v1.Shar
 
 	return connect.NewResponse(&v1.ShareStudyResponse{
 		Token:     token,
-		ViewerUrl: fmt.Sprintf("%s/viewer?StudyInstanceUID=%s&token=%s", svc.Config.PublicURL, req.Msg.StudyUid, token),
+		ViewerUrl: fmt.Sprintf("%s/viewer/?StudyInstanceUIDs=%s&token=%s", svc.Config.PublicURL, req.Msg.StudyUid, token),
 	}), nil
 }
