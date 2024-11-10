@@ -310,7 +310,8 @@ func (p *SingelHostProxy) rewriteQidoBody(r *http.Response, token resolvedAccess
 			if val, ok := s[dicomweb.StudyInstanceUID]; ok && len(val.Value) > 0 {
 				if s, ok := val.Value[0].(string); ok {
 					if token.studShare.StudyUID != s {
-						return fmt.Errorf("access to this study is prohibited")
+						// Skip this study
+						continue
 					}
 				}
 			}
