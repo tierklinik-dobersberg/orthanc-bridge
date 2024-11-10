@@ -328,25 +328,33 @@ func (p *SingelHostProxy) rewriteQidoBody(r *http.Response, token resolvedAccess
 				}
 			}
 
-			// validate access to the instances
-			if len(token.studShare.InstanceUIDs) > 0 {
+			// Filtering instances breaks OHIF since it expects at least one instance
+			// per series.
+			// We could fix this by checking which series are actually allowed (contains accessible instances).
+			// for now, this solution is good enough.
 
-				var instanceUid string
-				val, ok := s[dicomweb.SOPInstanceUID]
-				if ok && len(val.Value) > 0 {
-					hasInstances = true
+			/*
 
-					instanceUid, ok = val.Value[0].(string)
+				// validate access to the instances
+				if len(token.studShare.InstanceUIDs) > 0 {
+
+					var instanceUid string
+					val, ok := s[dicomweb.SOPInstanceUID]
+					if ok && len(val.Value) > 0 {
+						hasInstances = true
+
+						instanceUid, ok = val.Value[0].(string)
+					}
+
+					if ok && !slices.Contains(token.studShare.InstanceUIDs, instanceUid) {
+						slog.Info("filtered SOPInstanceUID since it's not allowed by the share token", "uid", instanceUid)
+
+						continue
+					} else {
+						instanceCount++
+					}
 				}
-
-				if ok && !slices.Contains(token.studShare.InstanceUIDs, instanceUid) {
-					slog.Info("filtered SOPInstanceUID since it's not allowed by the share token", "uid", instanceUid)
-
-					continue
-				} else {
-					instanceCount++
-				}
-			}
+			*/
 		}
 
 		if retrieveURI, ok := s[dicomweb.RetrieveURI]; ok {
