@@ -40,6 +40,12 @@ type Storage interface {
 	GetStudyShare(ctx context.Context, token string) (*repo.StudyShare, error)
 }
 
+type resolvedAccessToken struct {
+	validUntil    time.Time
+	isUserAccount bool
+	studShare     *repo.StudyShare
+}
+
 type SingelHostProxy struct {
 	proxy *httputil.ReverseProxy
 
@@ -55,7 +61,7 @@ type SingelHostProxy struct {
 	store Storage
 
 	rw          sync.RWMutex
-	validTokens map[string]time.Time
+	validTokens map[string]resolvedAccessToken
 }
 
 func New(name string, storage Storage, subdir string, publicURL *url.URL, cfg config.OrthancInstance, userClient idmv1connect.AuthServiceClient) (*SingelHostProxy, error) {
@@ -65,7 +71,7 @@ func New(name string, storage Storage, subdir string, publicURL *url.URL, cfg co
 		PublicURL:       publicURL,
 		OrthancInstance: cfg,
 		userClient:      userClient,
-		validTokens:     make(map[string]time.Time),
+		validTokens:     make(map[string]resolvedAccessToken),
 		once:            new(singleflight.Group),
 		store:           storage,
 	}
@@ -80,114 +86,31 @@ func New(name string, storage Storage, subdir string, publicURL *url.URL, cfg co
 	return i, nil
 }
 
-func getToken(r *http.Request) string {
-	if h := r.Header.Get("Authorization"); strings.HasPrefix(strings.ToLower(h), "bearer ") {
-		return strings.TrimSpace(h[7:])
-	}
-
-	for _, c := range r.Cookies() {
-		// TODO(ppacher): make cookie name configurable
-		if c.Name == "cis_idm_access" {
-			return c.Value
-		}
-	}
-
-	return ""
-}
-
-func (shp *SingelHostProxy) validateToken(ctx context.Context, token string, path string) bool {
-	// check for share tokens
-	if strings.HasPrefix(token, repo.ShareTokenPrefix) {
-		share, err := shp.store.GetStudyShare(ctx, token)
-		if err != nil {
-			slog.Error("failed to fetch study share token", "token", token, "error", err.Error())
-
-			// Better deny the request in an error case
-			return false
-		}
-
-		// ensure the share token is still valid
-		if !share.IsValid() {
-			return false
-		}
-
-		// TODO(ppacher): validate access to the given study/series/instance is actually allowed.
-
-		return true
-	}
-
-	res, _, _ := shp.once.Do(token, func() (interface{}, error) {
-		req := connect.NewRequest(&idmv1.IntrospectRequest{
-			ReadMask: &fieldmaskpb.FieldMask{
-				Paths: []string{"user.id", "user.username", "user.display_name", "valid_time"},
-			},
-		})
-
-		req.Header().Set("Authorization", "Bearer "+token)
-
-		slog.Info("querying IDM for token validity", "token-prefix", token[:8]+"****")
-		res, err := shp.userClient.Introspect(ctx, req)
-		if err == nil {
-			if res.Msg.ValidTime.IsValid() {
-				shp.cacheToken(token, res.Msg.ValidTime.AsTime())
-			}
-
-			return true, nil
-		}
-
-		return false, nil
-	})
-
-	return res.(bool)
-}
-
-func (shp *SingelHostProxy) isValidToken(token string) bool {
-	shp.rw.RLock()
-	defer shp.rw.RUnlock()
-
-	t, ok := shp.validTokens[token]
-	if !ok {
-		return false
-	}
-
-	valid := time.Now().Before(t)
-
-	if !valid {
-		go func() {
-			shp.rw.Lock()
-			defer shp.rw.Unlock()
-
-			delete(shp.validTokens, token)
-		}()
-	}
-
-	return valid
-}
-
-func (shp *SingelHostProxy) cacheToken(token string, validUntil time.Time) {
-	shp.rw.Lock()
-	defer shp.rw.Unlock()
-
-	shp.validTokens[token] = validUntil
-}
-
 func (shp *SingelHostProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	allowed := false
+	var resolved *resolvedAccessToken
 
 	if token := getToken(r); token != "" {
 		// TODO(ppacher): add support for shared studies
 
-		if shp.isValidToken(token) {
-			allowed = true
+		res, valid := shp.isValidToken(token)
+		if valid {
+			resolved = &res
 		} else {
-			allowed = shp.validateToken(context.Background(), token, r.URL.Path)
+			res, valid := shp.validateToken(context.Background(), token)
+			if valid {
+				resolved = &res
+			}
 		}
 	}
 
-	if !allowed {
+	if resolved == nil {
 		http.Error(w, "you are not allowed to use the dicom-web interface", http.StatusUnauthorized)
 		return
 	}
+
+	r = r.WithContext(
+		context.WithValue(r.Context(), proxyContextKey, *resolved),
+	)
 
 	shp.proxy.ServeHTTP(w, r)
 }
@@ -230,10 +153,6 @@ func (p *SingelHostProxy) buildProxy() (*httputil.ReverseProxy, error) {
 	}
 
 	director := func(req *http.Request) {
-		req = req.WithContext(
-			context.WithValue(req.Context(), proxyContextKey, "valid"),
-		)
-
 		rewriteRequestURL(req, target)
 
 		if p.Username != "" {
@@ -384,9 +303,6 @@ func (p *SingelHostProxy) rewriteQidoBody(r *http.Response) error {
 	r.Header.Set("Content-Encoding", "gzip")
 	r.Header.Set("Content-Length", fmt.Sprintf("%d", buf.Len()))
 
-	logrus.Infof("intercepted QIDO-RS call and replaced %d URLs", count)
-
-	// we're done
 	return nil
 }
 
@@ -431,4 +347,106 @@ func AddCORSHeaders(r http.ResponseWriter) {
 	for key, val := range headers {
 		r.Header().Set(key, val)
 	}
+}
+
+func (shp *SingelHostProxy) validateToken(ctx context.Context, token string) (resolvedAccessToken, bool) {
+	// check for share tokens
+	if strings.HasPrefix(token, repo.ShareTokenPrefix) {
+		share, err := shp.store.GetStudyShare(ctx, token)
+		if err != nil {
+			slog.Error("failed to fetch study share token", "token", token, "error", err.Error())
+
+			// Better deny the request in an error case
+			return resolvedAccessToken{}, false
+		}
+
+		// ensure the share token is still valid
+		if !share.IsValid() {
+			return resolvedAccessToken{}, false
+		}
+
+		return resolvedAccessToken{
+			validUntil: share.ExpiresAt,
+			studShare:  share,
+		}, true
+	}
+
+	resolved, _, _ := shp.once.Do(token, func() (interface{}, error) {
+		req := connect.NewRequest(&idmv1.IntrospectRequest{
+			ReadMask: &fieldmaskpb.FieldMask{
+				Paths: []string{"user.id", "user.username", "user.display_name", "valid_time"},
+			},
+		})
+
+		req.Header().Set("Authorization", "Bearer "+token)
+
+		slog.Info("querying IDM for token validity", "token-prefix", token[:8]+"****")
+		res, err := shp.userClient.Introspect(ctx, req)
+		if err == nil {
+			resolved := resolvedAccessToken{
+				isUserAccount: true,
+			}
+
+			if res.Msg.ValidTime.IsValid() {
+				resolved.validUntil = res.Msg.ValidTime.AsTime()
+
+				shp.cacheToken(token, resolved)
+			}
+
+			return &resolved, nil
+		}
+
+		return nil, nil
+	})
+
+	if resolved != nil {
+		return *(resolved.(*resolvedAccessToken)), true
+	}
+
+	return resolvedAccessToken{}, false
+}
+
+func (shp *SingelHostProxy) isValidToken(token string) (resolvedAccessToken, bool) {
+	shp.rw.RLock()
+	defer shp.rw.RUnlock()
+
+	t, ok := shp.validTokens[token]
+	if !ok {
+		return resolvedAccessToken{}, false
+	}
+
+	valid := time.Now().Before(t.validUntil)
+
+	if !valid {
+		go func() {
+			shp.rw.Lock()
+			defer shp.rw.Unlock()
+
+			delete(shp.validTokens, token)
+		}()
+	}
+
+	return t, valid
+}
+
+func (shp *SingelHostProxy) cacheToken(token string, resolved resolvedAccessToken) {
+	shp.rw.Lock()
+	defer shp.rw.Unlock()
+
+	shp.validTokens[token] = resolved
+}
+
+func getToken(r *http.Request) string {
+	if h := r.Header.Get("Authorization"); strings.HasPrefix(strings.ToLower(h), "bearer ") {
+		return strings.TrimSpace(h[7:])
+	}
+
+	for _, c := range r.Cookies() {
+		// TODO(ppacher): make cookie name configurable
+		if c.Name == "cis_idm_access" {
+			return c.Value
+		}
+	}
+
+	return ""
 }
