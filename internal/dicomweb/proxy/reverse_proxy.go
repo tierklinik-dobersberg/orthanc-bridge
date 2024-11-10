@@ -285,6 +285,8 @@ func unpackBody(r *http.Response) ([]byte, error) {
 }
 
 func (p *SingelHostProxy) rewriteQidoBody(r *http.Response, token resolvedAccessToken, match urlpath.Match) error {
+	slog.Info("rewriting DICOM+json response body")
+
 	blob, err := unpackBody(r)
 	if err != nil {
 		return err
