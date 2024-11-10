@@ -277,16 +277,12 @@ func (p *SingelHostProxy) rewriteQidoBody(r *http.Response, token resolvedAccess
 		return nil
 	}
 
-	_, hasSeries := match.Params["series"]
-	_, hasInstance := match.Params["instance"]
-
 	// fix the hostname in the RetrieveURI and RetrieveURL values
 	count := 0
 	copy := make([]dicomweb.QIDOResponse, 0, len(qido))
 	for _, s := range qido {
-		// this is a instance list request so we need to ensure to
-		// only return instances that are allowed by the share token
-		if hasSeries && !hasInstance && token.studShare != nil && len(token.studShare.InstanceUIDs) > 0 {
+
+		if token.studShare != nil && len(token.studShare.InstanceUIDs) > 0 {
 			var instanceUid string
 
 			val, ok := s[dicomweb.SOPInstanceUID]
@@ -295,6 +291,8 @@ func (p *SingelHostProxy) rewriteQidoBody(r *http.Response, token resolvedAccess
 			}
 
 			if ok && !slices.Contains(token.studShare.InstanceUIDs, instanceUid) {
+				slog.Info("filtered SOPInstanceUID since it's not allowed by the share token", "uid", instanceUid)
+
 				continue
 			}
 		}
