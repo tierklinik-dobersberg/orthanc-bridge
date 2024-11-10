@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -29,12 +30,14 @@ import (
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
-var (
-	// TODO(ppacher): make /dicom-web/ root configurable per instance
-	qidoStudyURL    = urlpath.New("/dicom-web/studies")
-	qidoSeriesURL   = urlpath.New("/dicom-web/studies/:study/series")
-	qidoInstanceURL = urlpath.New("/dicom-web/studies/:study/series/:series/instances")
-)
+var qidoMatcher = []urlpath.Path{
+	urlpath.New("/dicom-web/studies"),
+	urlpath.New("/dicom-web/studies/:study"),
+	urlpath.New("/dicom-web/studies/:study/series"),
+	urlpath.New("/dicom-web/studies/:study/series/:series"),
+	urlpath.New("/dicom-web/studies/:study/series/:series/instances"),
+	urlpath.New("/dicom-web/studies/:study/series/:series/instances/:instance/*"),
+}
 
 type Storage interface {
 	GetStudyShare(ctx context.Context, token string) (*repo.StudyShare, error)
@@ -108,6 +111,33 @@ func (shp *SingelHostProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// for a share-token, ensure the user is actually allowed to perform the request
+	if resolved.studShare != nil {
+		match, isQido := isQidoUrl(r.URL.Path)
+		if isQido {
+			study, ok := match.Params["study"]
+			if !ok {
+				// this is a study list request which is never allowed for share tokens
+				http.Error(w, "you are not allowed to list studies", http.StatusUnauthorized)
+				return
+			}
+
+			if resolved.studShare.StudyUID != study {
+				http.Error(w, "you are not allowed to access this study", http.StatusUnauthorized)
+				return
+			}
+
+			instance, ok := match.Params["instance"]
+			if ok && len(resolved.studShare.InstanceUIDs) > 0 {
+				// check if the user has access to the requested instance
+				if !slices.Contains(resolved.studShare.InstanceUIDs, instance) {
+					http.Error(w, "you are not allowed to access this study instance", http.StatusUnauthorized)
+					return
+				}
+			}
+		}
+	}
+
 	r = r.WithContext(
 		context.WithValue(r.Context(), proxyContextKey, *resolved),
 	)
@@ -128,20 +158,15 @@ func rewriteRequestURL(req *http.Request, target *url.URL) {
 	}
 }
 
-func isQidoUrl(path string) bool {
-	if _, match := qidoStudyURL.Match(path); match {
-		return true
+func isQidoUrl(path string) (urlpath.Match, bool) {
+	for _, p := range qidoMatcher {
+		res, match := p.Match(path)
+		if match {
+			return res, true
+		}
 	}
 
-	if _, match := qidoSeriesURL.Match(path); match {
-		return true
-	}
-
-	if _, match := qidoInstanceURL.Match(path); match {
-		return true
-	}
-
-	return false
+	return urlpath.Match{}, false
 }
 
 var proxyContextKey = struct{ S string }{S: "proxyContextKey"}
@@ -177,9 +202,15 @@ func (p *SingelHostProxy) buildProxy() (*httputil.ReverseProxy, error) {
 		ModifyResponse: func(r *http.Response) error {
 			contentType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 
-			if r.Request != nil {
-				val := r.Request.Context().Value(proxyContextKey)
-				slog.Info("got Request ins ModifyResponse", "value", val)
+			val := r.Request.Context().Value(proxyContextKey)
+
+			if val == nil {
+				return fmt.Errorf("no resolved access token available in request context")
+			}
+
+			token, ok := val.(resolvedAccessToken)
+			if !ok {
+				return fmt.Errorf("invalid resolved access token available in request context: %T", val)
 			}
 
 			if err != nil {
@@ -188,9 +219,11 @@ func (p *SingelHostProxy) buildProxy() (*httputil.ReverseProxy, error) {
 				return nil
 			}
 
+			match, isQuido := isQidoUrl(r.Request.URL.Path)
+
 			switch {
-			case contentType == "application/dicom+json" && isQidoUrl(r.Request.URL.Path):
-				return p.rewriteQidoBody(r)
+			case contentType == "application/dicom+json" && isQuido:
+				return p.rewriteQidoBody(r, token, match)
 
 			default:
 				// don't do anything here
@@ -201,7 +234,7 @@ func (p *SingelHostProxy) buildProxy() (*httputil.ReverseProxy, error) {
 	}, nil
 }
 
-func (p *SingelHostProxy) rewriteQidoBody(r *http.Response) error {
+func unpackBody(r *http.Response) ([]byte, error) {
 	var bodyReader io.Reader = r.Body
 
 	// wrap bodyReader in a gzip.Reader if the response is compressed
@@ -209,20 +242,29 @@ func (p *SingelHostProxy) rewriteQidoBody(r *http.Response) error {
 	case "gzip":
 		reader, err := gzip.NewReader(r.Body)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		bodyReader = reader
 	case "":
 		bodyReader = r.Body
 	default:
-		return fmt.Errorf("unsupported content-encoding %q for QIDO-RS", v)
+		return nil, fmt.Errorf("unsupported content-encoding %q for QIDO-RS", v)
 	}
 
 	// read the whole body from the backend server
 	blob, err := io.ReadAll(bodyReader)
 	if err != nil {
-		return fmt.Errorf("failed to read body: %s", err)
+		return nil, fmt.Errorf("failed to read body: %s", err)
+	}
+
+	return blob, nil
+}
+
+func (p *SingelHostProxy) rewriteQidoBody(r *http.Response, token resolvedAccessToken, match urlpath.Match) error {
+	blob, err := unpackBody(r)
+	if err != nil {
+		return err
 	}
 
 	// close the body now, it will be replaced anyways
@@ -235,10 +277,27 @@ func (p *SingelHostProxy) rewriteQidoBody(r *http.Response) error {
 		return nil
 	}
 
+	_, hasSeries := match.Params["series"]
+	_, hasInstance := match.Params["instance"]
+
 	// fix the hostname in the RetrieveURI and RetrieveURL values
 	count := 0
 	copy := make([]dicomweb.QIDOResponse, 0, len(qido))
 	for _, s := range qido {
+		// this is a instance list request so we need to ensure to
+		// only return instances that are allowed by the share token
+		if hasSeries && !hasInstance && token.studShare != nil && len(token.studShare.InstanceUIDs) > 0 {
+			var instanceUid string
+
+			val, ok := s[dicomweb.SOPInstanceUID]
+			if ok && len(val.Value) > 0 {
+				instanceUid, ok = val.Value[0].(string)
+			}
+
+			if ok && !slices.Contains(token.studShare.InstanceUIDs, instanceUid) {
+				continue
+			}
+		}
 
 		if retrieveURI, ok := s[dicomweb.RetrieveURI]; ok {
 			for idx, value := range retrieveURI.Value {
