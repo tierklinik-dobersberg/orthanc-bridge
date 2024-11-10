@@ -93,8 +93,6 @@ func (shp *SingelHostProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var resolved *resolvedAccessToken
 
 	if token := getToken(r); token != "" {
-		// TODO(ppacher): add support for shared studies
-
 		res, valid := shp.isValidToken(token)
 		if valid {
 			resolved = &res
@@ -117,9 +115,13 @@ func (shp *SingelHostProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if isQido {
 			study, ok := match.Params["study"]
 			if !ok {
-				// this is a study list request which is never allowed for share tokens
-				http.Error(w, "you are not allowed to list studies", http.StatusUnauthorized)
-				return
+				// check for StudyInstanceUIDs
+				study = r.URL.Query().Get("StudyInstanceUIDs")
+				if study == "" {
+					// this is a study list request which is never allowed for share tokens
+					http.Error(w, "you are not allowed to list studies", http.StatusUnauthorized)
+					return
+				}
 			}
 
 			if resolved.studShare.StudyUID != study {
@@ -422,10 +424,14 @@ func (shp *SingelHostProxy) validateToken(ctx context.Context, token string) (re
 			return resolvedAccessToken{}, false
 		}
 
-		return resolvedAccessToken{
+		r := resolvedAccessToken{
 			validUntil: share.ExpiresAt,
 			studShare:  share,
-		}, true
+		}
+
+		shp.cacheToken(token, r)
+
+		return r, true
 	}
 
 	resolved, _, _ := shp.once.Do(token, func() (interface{}, error) {
