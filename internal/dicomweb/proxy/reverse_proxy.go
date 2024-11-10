@@ -182,6 +182,8 @@ func rewriteRequestURL(req *http.Request, target *url.URL) {
 }
 
 func isQidoUrl(path string) (urlpath.Match, bool) {
+	path = strings.TrimPrefix(path, "/")
+
 	for _, p := range qidoMatcher {
 		res, match := p.Match(path)
 		if match {
@@ -307,6 +309,10 @@ func (p *SingelHostProxy) rewriteQidoBody(r *http.Response, token resolvedAccess
 	// fix the hostname in the RetrieveURI and RetrieveURL values
 	count := 0
 	copy := make([]dicomweb.QIDOResponse, 0, len(qido))
+
+	hasInstances := false
+	instanceCount := 0
+
 	for _, s := range qido {
 
 		if token.studShare != nil {
@@ -328,7 +334,7 @@ func (p *SingelHostProxy) rewriteQidoBody(r *http.Response, token resolvedAccess
 				var instanceUid string
 				val, ok := s[dicomweb.SOPInstanceUID]
 				if ok && len(val.Value) > 0 {
-					slog.Info("checking for instance access", "instance", val.Value)
+					hasInstances = true
 
 					instanceUid, ok = val.Value[0].(string)
 				}
@@ -337,6 +343,8 @@ func (p *SingelHostProxy) rewriteQidoBody(r *http.Response, token resolvedAccess
 					slog.Info("filtered SOPInstanceUID since it's not allowed by the share token", "uid", instanceUid)
 
 					continue
+				} else {
+					instanceCount++
 				}
 			}
 		}
@@ -374,6 +382,10 @@ func (p *SingelHostProxy) rewriteQidoBody(r *http.Response, token resolvedAccess
 		}
 
 		copy = append(copy, s)
+	}
+
+	if hasInstances && instanceCount == 0 {
+		return fmt.Errorf("no instances left")
 	}
 
 	// re-create the response body
