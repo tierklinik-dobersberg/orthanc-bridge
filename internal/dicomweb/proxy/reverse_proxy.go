@@ -112,7 +112,20 @@ func (shp *SingelHostProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// for a share-token, ensure the user is actually allowed to perform the request
 	if resolved.studShare != nil {
 		match, isQido := isQidoUrl(r.URL.Path)
+
+		attr := []slog.Attr{
+			slog.String("path", r.URL.Path),
+			slog.Bool("isQidoRS", isQido),
+		}
+
+		for key, val := range match.Params {
+			attr = append(attr, slog.String(key, val))
+		}
+
+		slog.LogAttrs(r.Context(), slog.LevelInfo, "validating dicomweb request", attr...)
+
 		if isQido {
+
 			study, ok := match.Params["study"]
 			if !ok {
 				// check for StudyInstanceUIDs
@@ -128,8 +141,9 @@ func (shp *SingelHostProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
+			slog.Info("validating access to study", "study", study, "allowed", resolved.studShare.StudyUID)
 			if resolved.studShare.StudyUID != study {
-				http.Error(w, "you are not allowed to access this study", http.StatusUnauthorized)
+				http.Error(w, "you are not allowed to access this study: "+study, http.StatusUnauthorized)
 				return
 			}
 
@@ -139,7 +153,7 @@ func (shp *SingelHostProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 				// check if the user has access to the requested instance
 				if !slices.Contains(resolved.studShare.InstanceUIDs, instance) {
-					http.Error(w, "you are not allowed to access this study instance", http.StatusUnauthorized)
+					http.Error(w, "you are not allowed to access this study instance: "+instance, http.StatusUnauthorized)
 					return
 				}
 			}
