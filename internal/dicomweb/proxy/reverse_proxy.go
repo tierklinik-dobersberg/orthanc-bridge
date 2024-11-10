@@ -135,6 +135,8 @@ func (shp *SingelHostProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 			instance, ok := match.Params["instance"]
 			if ok && len(resolved.studShare.InstanceUIDs) > 0 {
+				slog.Info("checking if access to study instance is allowed", "instance", instance)
+
 				// check if the user has access to the requested instance
 				if !slices.Contains(resolved.studShare.InstanceUIDs, instance) {
 					http.Error(w, "you are not allowed to access this study instance", http.StatusUnauthorized)
