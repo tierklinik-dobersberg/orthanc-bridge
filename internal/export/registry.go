@@ -303,9 +303,9 @@ func (reg *Registry) storeArtifact(ctx context.Context, path string, ttl time.Du
 
 var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
-func GetRandomString(n int) string {
-	source := rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
+var source = rand.New(rand.NewSource(uint64(time.Now().UnixNano())))
 
+func GetRandomString(n int) string {
 	b := make([]rune, n)
 	for i := range b {
 		b[i] = letterRunes[source.Intn(len(letterRunes))]
