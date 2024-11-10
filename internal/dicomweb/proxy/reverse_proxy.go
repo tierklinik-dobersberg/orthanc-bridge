@@ -116,7 +116,11 @@ func (shp *SingelHostProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			study, ok := match.Params["study"]
 			if !ok {
 				// check for StudyInstanceUIDs
-				study = r.URL.Query().Get("StudyInstanceUIDs")
+				study = r.URL.Query().Get("StudyInstanceUID")
+				if study == "" {
+					study = r.URL.Query().Get(dicomweb.StudyInstanceUID) // try using the tag value
+				}
+
 				if study == "" {
 					// this is a study list request which is never allowed for share tokens
 					http.Error(w, "you are not allowed to list studies", http.StatusUnauthorized)
@@ -284,18 +288,30 @@ func (p *SingelHostProxy) rewriteQidoBody(r *http.Response, token resolvedAccess
 	copy := make([]dicomweb.QIDOResponse, 0, len(qido))
 	for _, s := range qido {
 
-		if token.studShare != nil && len(token.studShare.InstanceUIDs) > 0 {
-			var instanceUid string
-
-			val, ok := s[dicomweb.SOPInstanceUID]
-			if ok && len(val.Value) > 0 {
-				instanceUid, ok = val.Value[0].(string)
+		if token.studShare != nil {
+			// validate access to the study
+			if val, ok := s[dicomweb.StudyInstanceUID]; ok && len(val.Value) > 0 {
+				if s, ok := val.Value[0].(string); ok {
+					if token.studShare.StudyUID != s {
+						return fmt.Errorf("access to this study is prohibited")
+					}
+				}
 			}
 
-			if ok && !slices.Contains(token.studShare.InstanceUIDs, instanceUid) {
-				slog.Info("filtered SOPInstanceUID since it's not allowed by the share token", "uid", instanceUid)
+			// validate access to the instances
+			if len(token.studShare.InstanceUIDs) > 0 {
+				var instanceUid string
 
-				continue
+				val, ok := s[dicomweb.SOPInstanceUID]
+				if ok && len(val.Value) > 0 {
+					instanceUid, ok = val.Value[0].(string)
+				}
+
+				if ok && !slices.Contains(token.studShare.InstanceUIDs, instanceUid) {
+					slog.Info("filtered SOPInstanceUID since it's not allowed by the share token", "uid", instanceUid)
+
+					continue
+				}
 			}
 		}
 
