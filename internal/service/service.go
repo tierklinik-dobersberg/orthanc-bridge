@@ -15,10 +15,12 @@ import (
 	"github.com/hashicorp/go-multierror"
 	v1 "github.com/tierklinik-dobersberg/apis/gen/go/tkd/orthanc_bridge/v1"
 	"github.com/tierklinik-dobersberg/apis/gen/go/tkd/orthanc_bridge/v1/orthanc_bridgev1connect"
+	"github.com/tierklinik-dobersberg/apis/pkg/auth"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/config"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/dicomweb"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/export"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/orthanc"
+	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/repo"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -254,5 +256,33 @@ func (svc *Service) DownloadStudy(ctx context.Context, req *connect.Request[v1.D
 	return connect.NewResponse(&v1.DownloadStudyResponse{
 		DownloadLink: accessUrl.String(),
 		ExpireTime:   timestamppb.New(archive.ExpiresAt),
+	}), nil
+}
+
+func (svc *Service) ShareStudy(ctx context.Context, req *connect.Request[v1.ShareStudyRequest]) (*connect.Response[v1.ShareStudyResponse], error) {
+	token := export.GetRandomString(48)
+
+	ttl := time.Hour * 24 * 30
+
+	if req.Msg.ValidDuration.IsValid() {
+		ttl = req.Msg.ValidDuration.AsDuration()
+	}
+
+	share := repo.StudyShare{
+		Token:        token,
+		CreatedAt:    time.Now(),
+		Creator:      auth.From(ctx).ID,
+		ExpiresAt:    time.Now().Add(ttl),
+		StudyUID:     req.Msg.StudyUid,
+		InstanceUIDs: req.Msg.InstanceUids,
+	}
+
+	if err := svc.Repo.CreateStudyShare(ctx, share); err != nil {
+		return nil, err
+	}
+
+	return connect.NewResponse(&v1.ShareStudyResponse{
+		Token:     token,
+		ViewerUrl: fmt.Sprintf("%s/viewer?StudyInstanceUID=%s&token=%s", svc.Config.PublicURL, req.Msg.StudyUid, token),
 	}), nil
 }

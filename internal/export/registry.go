@@ -280,7 +280,7 @@ func (reg *Registry) storeArtifact(ctx context.Context, path string, ttl time.Du
 	}
 
 	artifact := repo.Artifact{
-		ID:           getRandomString(32),
+		ID:           GetRandomString(32),
 		Filepath:     path,
 		DownloadName: filename,
 		CreatedAt:    time.Now(),
@@ -303,7 +303,7 @@ func (reg *Registry) storeArtifact(ctx context.Context, path string, ttl time.Du
 
 var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
-func getRandomString(n int) string {
+func GetRandomString(n int) string {
 	b := make([]rune, n)
 	for i := range b {
 		b[i] = letterRunes[rand.Intn(len(letterRunes))]

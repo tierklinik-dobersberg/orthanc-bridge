@@ -189,3 +189,12 @@ func (r *Repo) GetStudyShare(ctx context.Context, token string) (*StudyShare, er
 
 	return &share, nil
 }
+
+func (r *Repo) CreateStudyShare(ctx context.Context, share StudyShare) error {
+	_, err := r.shares.InsertOne(ctx, share)
+	if err != nil {
+		return fmt.Errorf("failed to insert share token: %w", err)
+	}
+
+	return nil
+}
