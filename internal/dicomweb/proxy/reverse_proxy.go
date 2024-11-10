@@ -244,10 +244,10 @@ func (p *SingelHostProxy) buildProxy() (*httputil.ReverseProxy, error) {
 
 			match, isQuido := isQidoUrl(r.Request.URL.Path)
 
-			slog.Info("checking response body", "contentType", contentType, "isQidoRS", isQuido)
+			slog.Info("checking response body", "contentType", contentType, "isQidoRS", isQuido, "path", r.Request.URL.Path)
 
 			switch {
-			case (contentType == "application/dicom+json" || contentType == "application/json") && isQuido:
+			case (contentType == "application/dicom+json" || contentType == "application/json"):
 				return p.rewriteQidoBody(r, token, match)
 
 			default:
