@@ -252,6 +252,10 @@ func (p *SingelHostProxy) buildProxy() (*httputil.ReverseProxy, error) {
 			case (contentType == "application/dicom+json" || contentType == "application/json"):
 				return p.rewriteQidoBody(r, token, match)
 
+			case strings.HasPrefix(contentType, "image/"):
+				// Add cache control header
+				r.Header.Add("Cache-Control", "max-age=604800")
+
 			default:
 				// don't do anything here
 			}
