@@ -94,7 +94,7 @@ func main() {
 	}
 
 	// create a new CallService and add it to the mux.
-	svc := service.New(providers)
+	svc := service.New(ctx, providers)
 
 	path, handler := orthanc_bridgev1connect.NewOrthancBridgeHandler(svc, interceptors)
 	serveMux.Handle(path, handler)

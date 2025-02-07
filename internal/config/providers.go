@@ -3,11 +3,17 @@ package config
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"path"
 
 	"github.com/tierklinik-dobersberg/apis/gen/go/tkd/idm/v1/idmv1connect"
+	"github.com/tierklinik-dobersberg/apis/pkg/discovery/consuldiscover"
+	"github.com/tierklinik-dobersberg/apis/pkg/discovery/wellknown"
+	"github.com/tierklinik-dobersberg/apis/pkg/events"
+	"github.com/tierklinik-dobersberg/apis/pkg/h2utils"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/dicomweb"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/export"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/orthanc"
@@ -15,8 +21,9 @@ import (
 )
 
 type Providers struct {
-	Users idmv1connect.UserServiceClient
-	Roles idmv1connect.RoleServiceClient
+	Users       idmv1connect.UserServiceClient
+	Roles       idmv1connect.RoleServiceClient
+	EventClient *events.Client
 
 	DICOMWebClient *dicomweb.Client
 	OrthancClient  *orthanc.Client
@@ -49,6 +56,30 @@ func NewProviders(ctx context.Context, cfg Config) (*Providers, error) {
 		u.User = url.UserPassword(instance.Username, instance.Password)
 	}
 
+	var eventClient *events.Client
+	disc, err := consuldiscover.NewFromEnv()
+
+	if err != nil {
+		slog.Error("failed to get service catalog", "error", err)
+	} else {
+		svc, err := disc.Discover(ctx, wellknown.EventV1ServiceScropt)
+		if err != nil {
+			slog.Error("failed to discover event service", "error", err)
+		}
+
+		if len(svc) > 0 {
+			i := svc[rand.IntN(len(svc))]
+
+			addr := fmt.Sprintf("http://%s", i.Address)
+
+			eventClient = events.NewClient(addr, h2utils.NewInsecureHttp2Client())
+
+			if err := eventClient.Start(ctx); err != nil {
+				slog.Error("failed to start event service client", "error", err)
+			}
+		}
+	}
+
 	webClient := dicomweb.NewClient((&url.URL{
 		Scheme: u.Scheme,
 		Host:   u.Host,
@@ -74,6 +105,7 @@ func NewProviders(ctx context.Context, cfg Config) (*Providers, error) {
 		Config:         cfg,
 		Artifacts:      export.NewRegistry(ctx, orthancClient, storage),
 		Repo:           storage,
+		EventClient:    eventClient,
 	}
 
 	return p, nil

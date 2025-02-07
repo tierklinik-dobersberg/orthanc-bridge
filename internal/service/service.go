@@ -9,10 +9,12 @@ import (
 	"path"
 	"slices"
 	"sort"
+	"sync"
 	"time"
 
 	connect "github.com/bufbuild/connect-go"
 	"github.com/hashicorp/go-multierror"
+	eventsv1 "github.com/tierklinik-dobersberg/apis/gen/go/tkd/events/v1"
 	orthanc_bridgev1 "github.com/tierklinik-dobersberg/apis/gen/go/tkd/orthanc_bridge/v1"
 	v1 "github.com/tierklinik-dobersberg/apis/gen/go/tkd/orthanc_bridge/v1"
 	"github.com/tierklinik-dobersberg/apis/gen/go/tkd/orthanc_bridge/v1/orthanc_bridgev1connect"
@@ -22,6 +24,7 @@ import (
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/export"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/orthanc"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/repo"
+	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -29,12 +32,76 @@ type Service struct {
 	orthanc_bridgev1connect.UnimplementedOrthancBridgeHandler
 
 	*config.Providers
+
+	recentStudiesLock sync.RWMutex
+	recentStudies     []*orthanc_bridgev1.Study
 }
 
-func New(p *config.Providers) *Service {
-	return &Service{
+func (svc *Service) watchRecentStudies(ctx context.Context) {
+	ticker := time.NewTicker(time.Minute * 5)
+	var events <-chan *eventsv1.Event
+
+	if svc.Providers.EventClient != nil {
+		var err error
+
+		events, err = svc.Providers.EventClient.SubscribeMessage(ctx, &orthanc_bridgev1.InstanceReceivedEvent{})
+		if err != nil {
+			slog.Error("failed to subscribe to InstanceReceivedEvent", "error", err)
+		}
+	}
+
+	go func() {
+		defer ticker.Stop()
+
+		for {
+
+			qidoReq := dicomweb.QIDORequest{
+				Type:       dicomweb.Study,
+				FilterTags: make(map[string][]string),
+				IncludeFields: []string{
+					dicomweb.ResponsiblePerson,
+					dicomweb.StudyDate,
+					dicomweb.StudyTime,
+					dicomweb.SeriesDate,
+					dicomweb.SeriesTime,
+					dicomweb.InstanceCreationDate,
+					dicomweb.InstanceCreationTime,
+				},
+			}
+
+			now := time.Now()
+			start := now.Add(-7 * 24 * time.Hour)
+
+			qidoReq.FilterTags[dicomweb.StudyDate] = []string{fmt.Sprintf("%s-%s", start.Format("20060102"), now.Format("20060102"))}
+
+			studies, err := svc.fetchStudies(ctx, qidoReq)
+			if err != nil {
+				slog.Error("failed to fetch recent studies", "error", err)
+			} else {
+				slog.Info("successfully fetched recent studies", "count", len(studies))
+
+				svc.recentStudiesLock.Lock()
+				svc.recentStudies = studies
+				svc.recentStudiesLock.Unlock()
+			}
+
+			select {
+			case <-ticker.C:
+			case <-events:
+			}
+		}
+
+	}()
+}
+
+func New(ctx context.Context, p *config.Providers) *Service {
+	svc := &Service{
 		Providers: p,
 	}
+
+	svc.watchRecentStudies(ctx)
+
+	return svc
 }
 
 func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[v1.ListStudiesRequest]) (*connect.Response[v1.ListStudiesResponse], error) {
@@ -316,4 +383,16 @@ func (svc *Service) fetchStudies(ctx context.Context, qidoReq dicomweb.QIDOReque
 	)
 
 	return response, nil
+}
+
+func (svc *Service) ListRecentStudies(ctx context.Context, req *connect.Request[emptypb.Empty]) (*connect.Response[orthanc_bridgev1.ListStudiesResponse], error) {
+	svc.recentStudiesLock.RLock()
+	defer svc.recentStudiesLock.RUnlock()
+
+	response := &orthanc_bridgev1.ListStudiesResponse{
+		Studies:    svc.recentStudies,
+		TotalCount: int64(len(svc.recentStudies)),
+	}
+
+	return connect.NewResponse(response), nil
 }
