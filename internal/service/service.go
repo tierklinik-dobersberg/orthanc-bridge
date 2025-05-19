@@ -66,6 +66,8 @@ func (svc *Service) watchRecentStudies(ctx context.Context) {
 					dicomweb.SeriesTime,
 					dicomweb.InstanceCreationDate,
 					dicomweb.InstanceCreationTime,
+					dicomweb.PatientID,
+					dicomweb.PatientName,
 				},
 			}
 
@@ -146,6 +148,10 @@ func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[v1.Lis
 
 	if m.PatientName != "" {
 		qidoReq.FilterTags[dicomweb.PatientName] = []string{m.PatientName}
+	}
+
+	if m.PatientId != "" {
+		qidoReq.FilterTags[dicomweb.PatientID] = []string{m.PatientId}
 	}
 
 	qidoReq.IncludeFields = append(qidoReq.IncludeFields, m.IncludeTags...)
@@ -308,6 +314,7 @@ func (svc *Service) fetchStudies(ctx context.Context, qidoReq dicomweb.QIDOReque
 			Modalities:  parseStringList(r, dicomweb.ModalitiesInStudy, nil),
 			PatientName: parseSingleName(r, dicomweb.PatientName, nil),
 			OwnerName:   parseSingleName(r, dicomweb.ResponsiblePerson, nil),
+			PatientId:   parseSingleName(r, dicomweb.PatientID, nil),
 			Tags:        parseTags(r),
 		}
 
