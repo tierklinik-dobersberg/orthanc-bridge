@@ -12,7 +12,7 @@ require (
 	github.com/sethvargo/go-envconfig v1.3.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.9.1
-	github.com/tierklinik-dobersberg/apis v0.48.0
+	github.com/tierklinik-dobersberg/apis v0.48.1
 	github.com/ucarion/urlpath v0.0.0-20200424170820-7ccc79b76bbb
 	go.mongodb.org/mongo-driver v1.17.3
 	golang.org/x/exp v0.0.0-20250506013437-ce4c2cf36ca6
@@ -58,7 +58,7 @@ require (
 	golang.org/x/net v0.40.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/text v0.25.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20250512202823-5a2f75b736a9 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20250512202823-5a2f75b736a9 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20250519155744-55703ea1f237 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20250519155744-55703ea1f237 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
