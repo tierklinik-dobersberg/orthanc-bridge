@@ -127,7 +127,7 @@ func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[v1.Lis
 
 	m := req.Msg
 
-	if dr := m.GetDateRange(); dr != nil {
+	if dr := m.GetDateRange(); dr != nil && dr.From != nil && dr.To != nil {
 		from := dr.From.AsTimeInLocation(time.Local)
 		to := dr.To.AsTimeInLocation(time.Local)
 
