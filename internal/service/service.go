@@ -138,6 +138,12 @@ func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[v1.Lis
 		qidoReq.FuzzyMatching = true
 	}
 
+	if p := m.GetPagination(); p != nil && p.PageSize > 0 {
+		page := p.GetPage()
+		qidoReq.Limit = int(p.PageSize)
+		qidoReq.Offset = int(p.PageSize * (page + 1))
+	}
+
 	if m.Modality != "" {
 		qidoReq.FilterTags[dicomweb.ModalitiesInStudy] = []string{m.Modality}
 	}
@@ -184,12 +190,6 @@ func (svc *Service) ListStudies(ctx context.Context, req *connect.Request[v1.Lis
 
 	if len(res) > 0 && len(response.Studies) == 0 {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to convert response, no studies available"))
-	}
-
-	// finnally, apply pagination if requested
-	if p := m.GetPagination(); p != nil && p.PageSize > 0 {
-		page := p.GetPage()
-		response.Studies = response.Studies[page*p.PageSize : (page+1)*p.PageSize]
 	}
 
 	return connect.NewResponse(response), nil
