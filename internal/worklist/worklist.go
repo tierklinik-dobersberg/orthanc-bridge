@@ -121,6 +121,8 @@ func (wl *Worklist) readEntry(path string) (dicom.Dataset, error) {
 
 func (wl *Worklist) watchFs() {
 	for e := range wl.watcher.Events {
+		slog.Info("received inotify event", "path", e.Name, "op", e.Op.String())
+
 		// Worklist event
 		if strings.HasPrefix(e.Name, wl.targetDirectory) {
 			switch {
