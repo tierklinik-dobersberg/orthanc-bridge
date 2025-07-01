@@ -246,7 +246,8 @@ func (wl *Worklist) initRuntime() error {
 	for name := range dicomweb.TagNames {
 		t, err := findTag(name)
 		if err != nil {
-			return fmt.Errorf("failed to find tag with name %q", name)
+			slog.Error("failed to find tag", "name", name)
+			continue
 		}
 
 		wl.rt.Set(name, t)
