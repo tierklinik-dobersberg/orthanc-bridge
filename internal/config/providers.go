@@ -4,22 +4,21 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"net/url"
 	"path"
 
-	"github.com/tierklinik-dobersberg/apis/gen/go/tkd/idm/v1/idmv1connect"
 	"github.com/tierklinik-dobersberg/apis/pkg/discovery/consuldiscover"
+	"github.com/tierklinik-dobersberg/apis/pkg/discovery/wellknown"
 	"github.com/tierklinik-dobersberg/apis/pkg/events"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/dicomweb"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/export"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/orthanc"
 	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/repo"
+	"github.com/tierklinik-dobersberg/orthanc-bridge/internal/worklist"
 )
 
 type Providers struct {
-	Users       idmv1connect.UserServiceClient
-	Roles       idmv1connect.RoleServiceClient
+	Clients     wellknown.Clients
 	EventClient *events.Client
 
 	DICOMWebClient *dicomweb.Client
@@ -29,12 +28,12 @@ type Providers struct {
 
 	Artifacts *export.Registry
 
+	Worklist *worklist.Worklist
+
 	Config Config
 }
 
 func NewProviders(ctx context.Context, cfg Config) (*Providers, error) {
-	httpClient := http.DefaultClient
-
 	var instance OrthancInstance
 	if cfg.DefaultInstance != "" {
 		var ok bool
@@ -83,15 +82,25 @@ func NewProviders(ctx context.Context, cfg Config) (*Providers, error) {
 		return nil, fmt.Errorf("failed to create repository: %w", err)
 	}
 
+	clients := wellknown.ConfigureClients(wellknown.ConfigureClientOptions{})
+
+	var wl *worklist.Worklist
+	if cfg.Worklist != nil {
+		wl, err = worklist.New(cfg.Worklist.TargetDirectory, cfg.Worklist.RulesDirectory, nil, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to configure DICOM worklist: %w", err)
+		}
+	}
+
 	p := &Providers{
-		Users:          idmv1connect.NewUserServiceClient(httpClient, cfg.IdmURL),
-		Roles:          idmv1connect.NewRoleServiceClient(httpClient, cfg.IdmURL),
+		Clients:        clients,
 		DICOMWebClient: webClient,
 		OrthancClient:  orthancClient,
 		Config:         cfg,
 		Artifacts:      export.NewRegistry(ctx, orthancClient, storage),
 		Repo:           storage,
 		EventClient:    eventClient,
+		Worklist:       wl,
 	}
 
 	return p, nil

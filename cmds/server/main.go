@@ -8,11 +8,8 @@ import (
 
 	"github.com/bufbuild/connect-go"
 	"github.com/bufbuild/protovalidate-go"
-	"github.com/sirupsen/logrus"
-	"github.com/tierklinik-dobersberg/apis/gen/go/tkd/idm/v1/idmv1connect"
 	"github.com/tierklinik-dobersberg/apis/gen/go/tkd/orthanc_bridge/v1/orthanc_bridgev1connect"
 	"github.com/tierklinik-dobersberg/apis/pkg/auth"
-	"github.com/tierklinik-dobersberg/apis/pkg/cli"
 	"github.com/tierklinik-dobersberg/apis/pkg/cors"
 	"github.com/tierklinik-dobersberg/apis/pkg/log"
 	"github.com/tierklinik-dobersberg/apis/pkg/server"
@@ -36,24 +33,27 @@ func main() {
 
 	cfg, err := config.LoadConfig(ctx, cfgFilePath)
 	if err != nil {
-		logger.Fatalf("failed to load configuration: %s", err)
+		logger.Error("failed to load configuration", "error", err)
+		os.Exit(-1)
 	}
-	logger.Infof("configuration loaded successfully")
+	logger.Info("configuration loaded successfully")
 
 	providers, err := config.NewProviders(ctx, *cfg)
 	if err != nil {
-		logger.Fatalf("failed to prepare providers: %s", err)
+		logger.Error("failed to prepare providers", "error", err)
+		os.Exit(-1)
 	}
-	logger.Infof("application providers prepared successfully")
+	logger.Info("application providers prepared successfully")
 
 	protoValidator, err := protovalidate.New()
 	if err != nil {
-		logger.Fatalf("failed to prepare protovalidator: %s", err)
+		logger.Error("failed to prepare protovalidator", "error", err)
+		os.Exit(1)
 	}
 
 	authInterceptor := auth.NewAuthAnnotationInterceptor(
 		protoregistry.GlobalFiles,
-		auth.NewIDMRoleResolver(providers.Roles),
+		auth.NewIDMRoleResolver(providers.Clients.RoleService),
 		auth.RemoteHeaderExtractor)
 
 	interceptors := connect.WithInterceptors(
@@ -76,18 +76,18 @@ func main() {
 
 	publicURL, err := url.Parse(cfg.PublicURL)
 	if err != nil {
-		logrus.Fatalf("failed to parse publicURL setting: %s", err)
+		logger.Error("failed to parse publicURL setting", "error", err)
+		os.Exit(-1)
 	}
-
-	authClient := idmv1connect.NewAuthServiceClient(cli.NewInsecureHttp2Client(), cfg.IdmURL)
 
 	// setup reverse proxy routes for each orthanc instance
 	for name, instance := range cfg.Instances {
 		prefix := "/bridge/" + name + "/"
 
-		proxy, err := proxy.New(name, providers.Repo, prefix, publicURL, instance, authClient)
+		proxy, err := proxy.New(name, providers.Repo, prefix, publicURL, instance, providers.Clients.AuthService)
 		if err != nil {
-			logger.Fatalf("failed to create dicomweb-proxy for %s: %s", name, err)
+			logger.Error("failed to create dicomweb-proxy", "name", name, "error", err)
+			os.Exit(-1)
 		}
 
 		serveMux.Handle(prefix, http.StripPrefix(prefix, proxy))
@@ -108,12 +108,14 @@ func main() {
 	}), server.WithCORS(corsConfig))
 
 	if err != nil {
-		logger.Fatalf("failed to create HTTP/2 server: %s", err)
+		logger.Error("failed to create HTTP/2 server", "error", err)
+		os.Exit(-1)
 	}
 
-	logger.Infof("HTTP/2 server (h2c) prepared successfully, startin to listen ...")
+	logger.Info("HTTP/2 server (h2c) prepared successfully, startin to listen ...")
 
 	if err := server.Serve(ctx, srv); err != nil {
-		logger.Fatalf("failed to serve: %s", err)
+		logger.Error("failed to serve", "error", err)
+		os.Exit(-1)
 	}
 }

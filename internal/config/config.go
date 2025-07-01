@@ -22,14 +22,19 @@ type OrthancInstance struct {
 	DicomWeb           string `json:"dicomWebPath"` // defaults to /dicom-web/
 }
 
+type WorklistConfig struct {
+	TargetDirectory string `json:"targetDirectory"`
+	RulesDirectory  string `json:"rulesDirectory"`
+}
+
 type Config struct {
-	IdmURL              string                     `env:"IDM_URL" json:"idmURL"`
 	AllowedOrigins      []string                   `env:"ALLOWED_ORIGINS" json:"allowedOrigins"`
 	PublicListenAddress string                     `env:"PUBLIC_LISTEN" json:"publicListen"`
 	AdminListenAddress  string                     `env:"ADMIN_LISTEN" json:"adminListen"`
 	PublicURL           string                     `env:"PUBLIC_URL" json:"publicUrl"`
 	Instances           map[string]OrthancInstance `json:"instances"`
 	DefaultInstance     string                     `json:"defaultInstance"`
+	Worklist            *WorklistConfig            `json:"worklist"`
 	Mongo               struct {
 		URL      string `json:"url"`
 		Database string `json:"database"`
@@ -77,14 +82,6 @@ func LoadConfig(ctx context.Context, path string) (*Config, error) {
 
 	if len(cfg.AllowedOrigins) == 0 {
 		cfg.AllowedOrigins = []string{"*"}
-	}
-
-	if cfg.IdmURL == "" {
-		return nil, fmt.Errorf("missing idmUrl config setting")
-	}
-
-	if _, err := url.Parse(cfg.IdmURL); err != nil {
-		return nil, fmt.Errorf("invalid IDM_URL: %w", err)
 	}
 
 	if cfg.Mongo.URL == "" || cfg.Mongo.Database == "" {
