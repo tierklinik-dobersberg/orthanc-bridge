@@ -7,6 +7,10 @@ import (
 	"net/url"
 	"path"
 
+	"github.com/hashicorp/go-multierror"
+	"github.com/suyashkumar/dicom"
+	dicomv1 "github.com/tierklinik-dobersberg/apis/gen/go/tkd/dicom/v1"
+	orthanc_bridgev1 "github.com/tierklinik-dobersberg/apis/gen/go/tkd/orthanc_bridge/v1"
 	"github.com/tierklinik-dobersberg/apis/pkg/discovery/consuldiscover"
 	"github.com/tierklinik-dobersberg/apis/pkg/discovery/wellknown"
 	"github.com/tierklinik-dobersberg/apis/pkg/events"
@@ -84,14 +88,6 @@ func NewProviders(ctx context.Context, cfg Config) (*Providers, error) {
 
 	clients := wellknown.ConfigureClients(wellknown.ConfigureClientOptions{})
 
-	var wl *worklist.Worklist
-	if cfg.Worklist != nil {
-		wl, err = worklist.New(cfg.Worklist.TargetDirectory, cfg.Worklist.RulesDirectory, nil, nil)
-		if err != nil {
-			return nil, fmt.Errorf("failed to configure DICOM worklist: %w", err)
-		}
-	}
-
 	p := &Providers{
 		Clients:        clients,
 		DICOMWebClient: webClient,
@@ -100,8 +96,48 @@ func NewProviders(ctx context.Context, cfg Config) (*Providers, error) {
 		Artifacts:      export.NewRegistry(ctx, orthancClient, storage),
 		Repo:           storage,
 		EventClient:    eventClient,
-		Worklist:       wl,
+	}
+
+	if cfg.Worklist != nil {
+		wl, err := worklist.New(cfg.Worklist.TargetDirectory, cfg.Worklist.RulesDirectory, p.onWLEntryCreated, p.onWlEntryDeleted)
+		if err != nil {
+			return nil, fmt.Errorf("failed to configure DICOM worklist: %w", err)
+		}
+
+		p.Worklist = wl
 	}
 
 	return p, nil
+}
+
+func (p *Providers) onWLEntryCreated(path string, ds dicom.Dataset) {
+	elements := make([]*dicomv1.Element, 0, len(ds.Elements))
+
+	merr := new(multierror.Error)
+	for _, el := range ds.Elements {
+		pb, err := dicomv1.ElementProto(el)
+		if err != nil {
+			merr.Errors = append(merr.Errors, fmt.Errorf("%s: %w", el.Tag.String(), err))
+			continue
+		}
+
+		elements = append(elements, pb)
+	}
+
+	p.EventClient.Publish(context.Background(), &orthanc_bridgev1.WorklistEntryCreatedEvent{
+		Entry: &orthanc_bridgev1.WorklistEntry{
+			Name:     path,
+			Elements: elements,
+		},
+	})
+
+	if err := merr.ErrorOrNil(); err != nil {
+		slog.Error("failed to convert one or more DICOM elements", "error", err)
+	}
+}
+
+func (p *Providers) onWlEntryDeleted(path string) {
+	p.EventClient.Publish(context.Background(), &orthanc_bridgev1.WorklistEntryRemovedEvent{
+		Name: path,
+	})
 }
