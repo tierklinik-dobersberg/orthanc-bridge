@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/dop251/goja"
@@ -181,16 +182,22 @@ func (e *Entry) ToProto() (*orthanc_bridgev1.WorklistEntry, error) {
 }
 
 func (wl *Worklist) ListEntries() ([]Entry, error) {
+	slog.Info("searching for log entries", "target", wl.targetDirectory)
+
 	files, err := fs.Glob(os.DirFS(wl.targetDirectory), "*.wl")
 	if err != nil {
 		return nil, fmt.Errorf("failed to glob worklist directory: %w", err)
 	}
 
 	entries := make([]Entry, 0, len(files))
+	merr := new(multierror.Error)
 	for _, f := range files {
-		ds, err := wl.readEntry(f)
+		ds, err := wl.readEntry(filepath.Join(wl.targetDirectory, f))
 		if err != nil {
-			return nil, fmt.Errorf("failed to read worklist entry %q: %w", f, err)
+			slog.Error("failed to read worklist entry", "path", f, "error", err)
+
+			merr.Errors = append(merr.Errors, fmt.Errorf("failed to read worklist entry %q: %w", f, err))
+			continue
 		}
 
 		entries = append(entries, Entry{
@@ -199,7 +206,7 @@ func (wl *Worklist) ListEntries() ([]Entry, error) {
 		})
 	}
 
-	return entries, nil
+	return entries, merr.ErrorOrNil()
 }
 
 func (wl *Worklist) Generate(customer *customerv1.Customer, patient *customerv1.Patient, ds dicom.Dataset) (dicom.Dataset, error) {
